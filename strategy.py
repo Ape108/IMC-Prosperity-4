@@ -391,7 +391,7 @@ class EmeraldStrategy(MarketMakingStrategy):
 class Trader:
     def __init__(self) -> None:
         limits = {
-            "TOMATOES": 80, # COME BACK AND FIX
+            "TOMATOES": 80,
             "EMERALDS": 80
         }
 
