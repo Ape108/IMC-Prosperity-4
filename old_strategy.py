@@ -100,8 +100,8 @@ class Logger:
                 observation.transportFees,
                 observation.exportTariff,
                 observation.importTariff,
-                observation.sunlight,
-                observation.humidity,
+                observation.sugarPrice,
+                observation.sunlightIndex,
             ]
 
         return [observations.plainValueObservations, conversion_observations]
@@ -310,8 +310,24 @@ class MarketMakingStrategy(Strategy):
             self.sell(price, to_sell)
 
 
-class RollingZScoreStrategy(SignalStrategy, StatefulStrategy[dict[str, Any]]):
+class RainforestResinStrategy(MarketMakingStrategy):
+    def get_true_value(self, state: TradingState) -> float:
+        expected_true_value = 10_000
+        max_delta = 5
 
+        mid_price = self.get_mid_price(state, self.symbol)
+        if (expected_true_value - max_delta) <= mid_price <= (expected_true_value + max_delta):
+            return expected_true_value
+
+        return mid_price
+
+
+class KelpStrategy(MarketMakingStrategy):
+    def get_true_value(self, state: TradingState) -> float:
+        return self.get_mid_price(state, self.symbol)
+
+
+class RollingZScoreStrategy(SignalStrategy, StatefulStrategy[dict[str, Any]]):
     def __init__(self, symbol: Symbol, limit: int, zscore_period: int, smoothing_period: int, threshold: float) -> None:
         super().__init__(symbol, limit)
 
@@ -354,6 +370,122 @@ class RollingZScoreStrategy(SignalStrategy, StatefulStrategy[dict[str, Any]]):
         self.history = data["history"]
 
 
+class SquidInkStrategy(RollingZScoreStrategy):
+    def __init__(self, symbol: Symbol, limit: int) -> None:
+        zscore_period = 150
+        smoothing_period = 100
+        threshold = 1
+
+        super().__init__(symbol, limit, zscore_period, smoothing_period, threshold)
+
+
+class JamsStrategy(SignalStrategy):
+    def get_required_symbols(self) -> list[Symbol]:
+        return ["CROISSANTS", "JAMS", "DJEMBES", "PICNIC_BASKET1", "PICNIC_BASKET2"]
+
+    def get_signal(self, state: TradingState) -> Signal | None:
+        croissants = self.get_mid_price(state, "CROISSANTS")
+        jams = self.get_mid_price(state, "JAMS")
+        djembes = self.get_mid_price(state, "DJEMBES")
+        picnic_basket1 = self.get_mid_price(state, "PICNIC_BASKET1")
+        picnic_basket2 = self.get_mid_price(state, "PICNIC_BASKET2")
+
+        basket_diff = picnic_basket1 - picnic_basket2
+        expected_basket_diff = 2 * croissants + jams + djembes
+        diff = basket_diff - expected_basket_diff
+
+        long_threshold = -130
+        short_threshold = -60
+
+        if diff < long_threshold:
+            return Signal.LONG
+        elif diff > short_threshold:
+            return Signal.SHORT
+
+        return None
+
+
+class PicnicBasket1Strategy(SignalStrategy):
+    def get_required_symbols(self) -> list[Symbol]:
+        return ["CROISSANTS", "JAMS", "DJEMBES", "PICNIC_BASKET1"]
+
+    def get_signal(self, state: TradingState) -> Signal | None:
+        croissants = self.get_mid_price(state, "CROISSANTS")
+        jams = self.get_mid_price(state, "JAMS")
+        djembes = self.get_mid_price(state, "DJEMBES")
+        picnic_basket1 = self.get_mid_price(state, "PICNIC_BASKET1")
+
+        diff = picnic_basket1 - 6 * croissants - 3 * jams - djembes
+
+        long_threshold = -10
+        short_threshold = 70
+
+        if diff < long_threshold:
+            return Signal.LONG
+        elif diff > short_threshold:
+            return Signal.SHORT
+
+        return None
+
+
+class PicnicBasket2Strategy(SignalStrategy):
+    def get_required_symbols(self) -> list[Symbol]:
+        return ["CROISSANTS", "JAMS", "PICNIC_BASKET2"]
+
+    def get_signal(self, state: TradingState) -> Signal | None:
+        croissants = self.get_mid_price(state, "CROISSANTS")
+        jams = self.get_mid_price(state, "JAMS")
+        picnic_basket2 = self.get_mid_price(state, "PICNIC_BASKET2")
+
+        diff = picnic_basket2 - 4 * croissants - 2 * jams
+
+        long_threshold = -100
+        short_threshold = 60
+
+        if diff < long_threshold:
+            return Signal.LONG
+        elif diff > short_threshold:
+            return Signal.SHORT
+
+        return None
+
+
+class InvertedPicnicBasket1Strategy(InvertedSignalStrategy):
+    def __init__(self, symbol: Symbol, limit: int) -> None:
+        super().__init__(symbol, limit, PicnicBasket1Strategy(symbol, limit))
+
+
+class InvertedPicnicBasket2Strategy(InvertedSignalStrategy):
+    def __init__(self, symbol: Symbol, limit: int) -> None:
+        super().__init__(symbol, limit, PicnicBasket2Strategy(symbol, limit))
+
+
+class VolcanicRockStrategy(RollingZScoreStrategy):
+    def __init__(self, symbol: Symbol, limit: int) -> None:
+        zscore_period = 75
+        smoothing_period = 100
+        threshold = 0.5
+
+        super().__init__(symbol, limit, zscore_period, smoothing_period, threshold)
+
+
+class MagnificentMacaronsStrategy(Strategy):
+    def act(self, state: TradingState) -> None:
+        position = state.position.get(self.symbol, 0)
+        conversion_limit = 10
+
+        to_convert = min(conversion_limit, -1 * position)
+        self.convert(to_convert)
+        position += to_convert
+
+        obs = state.observations.conversionObservations.get(self.symbol, None)
+        if obs is None:
+            return
+
+        buy_price = obs.askPrice + obs.transportFees + obs.importTariff
+        self.sell(max(int(obs.bidPrice + 0.5), int(buy_price + 1)), min(conversion_limit, self.limit + position))
+
+
 class DeanonymizedTradesStrategy(SignalStrategy):
     def __init__(self, symbol: Symbol, limit: int, trader_name: str) -> None:
         super().__init__(symbol, limit)
@@ -376,30 +508,44 @@ class DeanonymizedTradesStrategy(SignalStrategy):
         return None
 
 
-
-### STRATEGIES ROUND 0 ###
-
-class TomatoStrategy(MarketMakingStrategy):
-    def get_true_value(self, state: TradingState) -> float:
-        return self.get_mid_price(state, self.symbol)
-
-class EmeraldStrategy(MarketMakingStrategy):
-    def get_true_value(self, state: TradingState) -> float:
-        return self.get_mid_price(state, self.symbol)
-
-
 class Trader:
     def __init__(self) -> None:
         limits = {
-            "TOMATOES": 80, # COME BACK AND FIX
-            "EMERALDS": 80
+            "RAINFOREST_RESIN": 50,
+            "KELP": 50,
+            "SQUID_INK": 50,
+            "CROISSANTS": 250,
+            "JAMS": 350,
+            "DJEMBES": 60,
+            "PICNIC_BASKET1": 60,
+            "PICNIC_BASKET2": 100,
+            "VOLCANIC_ROCK": 400,
+            "VOLCANIC_ROCK_VOUCHER_9500": 200,
+            "VOLCANIC_ROCK_VOUCHER_9750": 200,
+            "VOLCANIC_ROCK_VOUCHER_10000": 200,
+            "VOLCANIC_ROCK_VOUCHER_10250": 200,
+            "VOLCANIC_ROCK_VOUCHER_10500": 200,
+            "MAGNIFICENT_MACARONS": 75,
         }
 
         self.strategies: dict[Symbol, Strategy] = {
             symbol: clazz(symbol, limits[symbol])
             for symbol, clazz in {
-                "TOMATOES": TomatoStrategy,
-                "EMERALDS": EmeraldStrategy
+                "RAINFOREST_RESIN": RainforestResinStrategy,
+                "KELP": KelpStrategy,
+                "SQUID_INK": lambda sym, lim: DeanonymizedTradesStrategy(sym, lim, "Olivia"),
+                "CROISSANTS": lambda sym, lim: DeanonymizedTradesStrategy(sym, lim, "Olivia"),
+                # # "JAMS": JamsStrategy,
+                # # "DJEMBES": InvertedPicnicBasket1Strategy,
+                "PICNIC_BASKET1": PicnicBasket1Strategy,
+                # # "PICNIC_BASKET2": PicnicBasket2Strategy,
+                "VOLCANIC_ROCK": VolcanicRockStrategy,
+                "VOLCANIC_ROCK_VOUCHER_9500": VolcanicRockStrategy,
+                "VOLCANIC_ROCK_VOUCHER_9750": VolcanicRockStrategy,
+                "VOLCANIC_ROCK_VOUCHER_10000": VolcanicRockStrategy,
+                "VOLCANIC_ROCK_VOUCHER_10250": VolcanicRockStrategy,
+                "VOLCANIC_ROCK_VOUCHER_10500": VolcanicRockStrategy,
+                "MAGNIFICENT_MACARONS": MagnificentMacaronsStrategy,
             }.items()
         }
 
@@ -424,7 +570,4 @@ class Trader:
         trader_data = json.dumps(new_trader_data, separators=(",", ":"))
 
         logger.flush(state, orders, conversions, trader_data)
-        print(f"Submitting orders: {orders}")
         return orders, conversions, trader_data
-
-
