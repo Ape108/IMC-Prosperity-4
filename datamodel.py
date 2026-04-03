@@ -27,8 +27,8 @@ class ConversionObservation:
         self.transportFees = transportFees
         self.exportTariff = exportTariff
         self.importTariff = importTariff
-        self.sugarPrice = sugarPrice
-        self.sunlightIndex = sunlightIndex
+        self.sunlight = sunlight
+        self.humidity = humidity
         
 
 class Observation:
