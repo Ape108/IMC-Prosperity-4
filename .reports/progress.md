@@ -1,6 +1,107 @@
 
 ### ROUND 0 STRATS ###
 
+# Rolling Vol Stoikov MM Strat
+
+```python
+
+class TomatoStrategy(MarketMakingStrategy, StatefulStrategy[dict[str, Any]]):
+    def __init__(self, symbol: Symbol, limit: int) -> None:
+        super().__init__(symbol, limit)
+        self.history: list[float] = []
+        self.window_size = 100
+
+    def get_micro_price(self, state: TradingState) -> float:
+        order_depth = state.order_depths[self.symbol]
+        if not order_depth.buy_orders or not order_depth.sell_orders:
+            return self.get_mid_price(state, self.symbol)
+            
+        best_bid, bid_vol = sorted(order_depth.buy_orders.items(), reverse=True)[0]
+        best_ask, ask_vol = sorted(order_depth.sell_orders.items())[0]
+        
+        # In Prosperity, sell volumes are negative integers. We need absolute values.
+        bid_vol = abs(bid_vol)
+        ask_vol = abs(ask_vol)
+        
+        # Volume-weighted micro-price calculation
+        return (best_bid * ask_vol + best_ask * bid_vol) / (bid_vol + ask_vol)
+
+    def get_true_value(self, state: TradingState) -> float:
+        # Use Micro-Price instead of Mid-Price
+        micro_price = self.get_micro_price(state)
+        inventory = state.position.get(self.symbol, 0)
+        gamma = 0.005  
+        
+        self.history.append(micro_price)
+        if len(self.history) > self.window_size:
+            self.history.pop(0)
+
+        if len(self.history) < 2:
+            sigma = 2.0
+        else:
+            sigma = pd.Series(self.history).std()
+            if pd.isna(sigma) or sigma < 1.0:
+                sigma = 1.0 
+
+        reservation_price = micro_price - (inventory * gamma * (sigma**2))
+        
+        # CRITICAL: Round to nearest integer to prevent the base Strategy's 
+        # floor/ceil logic from aggressively tightening the spread.
+        return round(reservation_price)
+
+    def save(self) -> dict[str, Any]:
+        return {"history": self.history}
+
+    def load(self, data: dict[str, Any]) -> None:
+        self.history = data["history"]
+
+
+class EmeraldStrategy(MarketMakingStrategy, StatefulStrategy[dict[str, Any]]):
+    def __init__(self, symbol: Symbol, limit: int) -> None:
+        super().__init__(symbol, limit)
+        self.history: list[float] = [] 
+
+    def get_micro_price(self, state: TradingState) -> float:
+        order_depth = state.order_depths[self.symbol]
+        if not order_depth.buy_orders or not order_depth.sell_orders:
+            return self.get_mid_price(state, self.symbol)
+            
+        best_bid, bid_vol = sorted(order_depth.buy_orders.items(), reverse=True)[0]
+        best_ask, ask_vol = sorted(order_depth.sell_orders.items())[0]
+        
+        bid_vol = abs(bid_vol)
+        ask_vol = abs(ask_vol)
+        
+        return (best_bid * ask_vol + best_ask * bid_vol) / (bid_vol + ask_vol)
+
+    def get_true_value(self, state: TradingState) -> float:
+        micro_price = self.get_micro_price(state)
+        inventory = state.position.get(self.symbol, 0)
+        gamma = 0.015  
+        
+        self.history.append(micro_price)
+        if len(self.history) > 100:
+            self.history.pop(0)
+
+        reservation_price = micro_price - (inventory * gamma)
+        
+        # Round Emeralds as well to maintain their strict 2-tick spread
+        return round(reservation_price)
+
+    def save(self) -> dict[str, Any]:
+        return {"history": self.history}
+
+    def load(self, data: dict[str, Any]) -> None:
+        self.history = data["history"]
+
+```
+
+## Score: ~2,518
+
+![rolling vol stoikov](../rolling_vol_stoikov.png)
+
+
+
 # Stoikov Market-Making Strat
 
 ```python
