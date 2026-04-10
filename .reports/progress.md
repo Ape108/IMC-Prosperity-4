@@ -50,7 +50,7 @@ class EmeraldStrategy(MarketMakingStrategy):
 
 ## Score: ~2,450
 
-![stoikov graph](stoikov.png)
+![stoikov graph](../stoikov.png)
 
 
 
@@ -68,5 +68,5 @@ class EmeraldStrategy(MarketMakingStrategy):
 
 ## Score: ~2,451
 
-![simple graph](simple.png)
+![simple graph](../simple.png)
 
