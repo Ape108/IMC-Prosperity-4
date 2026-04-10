@@ -1,3 +1,18 @@
+"""
+jmerle/imc-prosperity-3 — hybrid.py (main algorithm)
+Source: https://github.com/jmerle/imc-prosperity-3/blob/master/prosperity3/algorithms/hybrid.py
+25th overall, 8th EU, 1st Netherlands
+
+Strategy hierarchy:
+  Strategy[T]                  # Base: symbol, limit, buy(), sell(), convert()
+  ├── StatefulStrategy[T]      # Adds save()/load() for persisting state across ticks
+  │   ├── SignalStrategy       # Manages LONG/SHORT/NEUTRAL signal with position flattening
+  │   │   ├── RollingZScoreStrategy    # Mean-reversion via rolling z-score
+  │   │   ├── DeanonymizedTradesStrategy  # Follows specific named traders
+  │   │   └── InvertedSignalStrategy   # Inverts another strategy's signal
+  │   └── MarketMakingStrategy # Quotes around a true value, fills existing orders first
+"""
+
 import json
 from abc import abstractmethod
 from enum import IntEnum
@@ -31,7 +46,6 @@ class Logger:
             )
         )
 
-        # We truncate state.traderData, trader_data, and self.logs to the same max. length to fit the log limit
         max_item_length = (self.max_log_length - base_length) // 3
 
         print(
@@ -54,8 +68,8 @@ class Logger:
             trader_data,
             self.compress_listings(state.listings),
             self.compress_order_depths(state.order_depths),
-            [],  # self.compress_trades(state.own_trades),
-            [],  # self.compress_trades(state.market_trades),
+            [],
+            [],
             state.position,
             self.compress_observations(state.observations),
         ]
@@ -64,14 +78,12 @@ class Logger:
         compressed = []
         for listing in listings.values():
             compressed.append([listing.symbol, listing.product, listing.denomination])
-
         return compressed
 
     def compress_order_depths(self, order_depths: dict[Symbol, OrderDepth]) -> dict[Symbol, list[Any]]:
         compressed = {}
         for symbol, order_depth in order_depths.items():
             compressed[symbol] = [order_depth.buy_orders, order_depth.sell_orders]
-
         return compressed
 
     def compress_trades(self, trades: dict[Symbol, list[Trade]]) -> list[list[Any]]:
@@ -79,16 +91,8 @@ class Logger:
         for arr in trades.values():
             for trade in arr:
                 compressed.append(
-                    [
-                        trade.symbol,
-                        trade.price,
-                        trade.quantity,
-                        trade.buyer,
-                        trade.seller,
-                        trade.timestamp,
-                    ]
+                    [trade.symbol, trade.price, trade.quantity, trade.buyer, trade.seller, trade.timestamp]
                 )
-
         return compressed
 
     def compress_observations(self, observations: Observation) -> list[Any]:
@@ -103,7 +107,6 @@ class Logger:
                 observation.sugarPrice,
                 observation.sunlightIndex,
             ]
-
         return [observations.plainValueObservations, conversion_observations]
 
     def compress_orders(self, orders: dict[Symbol, list[Order]]) -> list[list[Any]]:
@@ -111,7 +114,6 @@ class Logger:
         for arr in orders.values():
             for order in arr:
                 compressed.append([order.symbol, order.price, order.quantity])
-
         return compressed
 
     def to_json(self, value: Any) -> str:
@@ -120,22 +122,17 @@ class Logger:
     def truncate(self, value: str, max_length: int) -> str:
         lo, hi = 0, min(len(value), max_length)
         out = ""
-
         while lo <= hi:
             mid = (lo + hi) // 2
-
             candidate = value[:mid]
             if len(candidate) < len(value):
                 candidate += "..."
-
             encoded_candidate = json.dumps(candidate)
-
             if len(encoded_candidate) <= max_length:
                 out = candidate
                 lo = mid + 1
             else:
                 hi = mid - 1
-
         return out
 
 
@@ -209,7 +206,6 @@ class Signal(IntEnum):
 class SignalStrategy(StatefulStrategy[int]):
     def __init__(self, symbol: Symbol, limit: int) -> None:
         super().__init__(symbol, limit)
-
         self.signal = Signal.NEUTRAL
 
     @abstractmethod
@@ -250,7 +246,6 @@ class SignalStrategy(StatefulStrategy[int]):
 class InvertedSignalStrategy(SignalStrategy):
     def __init__(self, symbol: Symbol, limit: int, underlying: SignalStrategy) -> None:
         super().__init__(symbol, limit)
-
         self.underlying = underlying
 
     def get_required_symbols(self) -> list[Symbol]:
@@ -258,7 +253,6 @@ class InvertedSignalStrategy(SignalStrategy):
 
     def get_signal(self, state: TradingState) -> Signal | None:
         signal = self.underlying.get_signal(state)
-
         if signal == Signal.LONG:
             return Signal.SHORT
         elif signal == Signal.SHORT:
@@ -314,11 +308,9 @@ class RainforestResinStrategy(MarketMakingStrategy):
     def get_true_value(self, state: TradingState) -> float:
         expected_true_value = 10_000
         max_delta = 5
-
         mid_price = self.get_mid_price(state, self.symbol)
         if (expected_true_value - max_delta) <= mid_price <= (expected_true_value + max_delta):
             return expected_true_value
-
         return mid_price
 
 
@@ -330,11 +322,9 @@ class KelpStrategy(MarketMakingStrategy):
 class RollingZScoreStrategy(SignalStrategy, StatefulStrategy[dict[str, Any]]):
     def __init__(self, symbol: Symbol, limit: int, zscore_period: int, smoothing_period: int, threshold: float) -> None:
         super().__init__(symbol, limit)
-
         self.zscore_period = zscore_period
         self.smoothing_period = smoothing_period
         self.threshold = threshold
-
         self.history: list[float] = []
 
     def get_signal(self, state: TradingState) -> Signal | None:
@@ -356,27 +346,21 @@ class RollingZScoreStrategy(SignalStrategy, StatefulStrategy[dict[str, Any]]):
 
         if score < -self.threshold:
             return Signal.LONG
-
         if score > self.threshold:
             return Signal.SHORT
-
         return None
 
-    def save(self) -> dict[str, Any]:  # type: ignore
+    def save(self) -> dict[str, Any]:
         return {"signal": SignalStrategy.save(self), "history": self.history}
 
-    def load(self, data: dict[str, Any]) -> None:  # type: ignore
+    def load(self, data: dict[str, Any]) -> None:
         SignalStrategy.load(self, data["signal"])
         self.history = data["history"]
 
 
 class SquidInkStrategy(RollingZScoreStrategy):
     def __init__(self, symbol: Symbol, limit: int) -> None:
-        zscore_period = 150
-        smoothing_period = 100
-        threshold = 1
-
-        super().__init__(symbol, limit, zscore_period, smoothing_period, threshold)
+        super().__init__(symbol, limit, zscore_period=150, smoothing_period=100, threshold=1)
 
 
 class JamsStrategy(SignalStrategy):
@@ -394,14 +378,10 @@ class JamsStrategy(SignalStrategy):
         expected_basket_diff = 2 * croissants + jams + djembes
         diff = basket_diff - expected_basket_diff
 
-        long_threshold = -130
-        short_threshold = -60
-
-        if diff < long_threshold:
+        if diff < -130:
             return Signal.LONG
-        elif diff > short_threshold:
+        elif diff > -60:
             return Signal.SHORT
-
         return None
 
 
@@ -417,14 +397,10 @@ class PicnicBasket1Strategy(SignalStrategy):
 
         diff = picnic_basket1 - 6 * croissants - 3 * jams - djembes
 
-        long_threshold = -10
-        short_threshold = 70
-
-        if diff < long_threshold:
+        if diff < -10:
             return Signal.LONG
-        elif diff > short_threshold:
+        elif diff > 70:
             return Signal.SHORT
-
         return None
 
 
@@ -439,14 +415,10 @@ class PicnicBasket2Strategy(SignalStrategy):
 
         diff = picnic_basket2 - 4 * croissants - 2 * jams
 
-        long_threshold = -100
-        short_threshold = 60
-
-        if diff < long_threshold:
+        if diff < -100:
             return Signal.LONG
-        elif diff > short_threshold:
+        elif diff > 60:
             return Signal.SHORT
-
         return None
 
 
@@ -462,11 +434,7 @@ class InvertedPicnicBasket2Strategy(InvertedSignalStrategy):
 
 class VolcanicRockStrategy(RollingZScoreStrategy):
     def __init__(self, symbol: Symbol, limit: int) -> None:
-        zscore_period = 75
-        smoothing_period = 100
-        threshold = 0.5
-
-        super().__init__(symbol, limit, zscore_period, smoothing_period, threshold)
+        super().__init__(symbol, limit, zscore_period=75, smoothing_period=100, threshold=0.5)
 
 
 class MagnificentMacaronsStrategy(Strategy):
@@ -489,7 +457,6 @@ class MagnificentMacaronsStrategy(Strategy):
 class DeanonymizedTradesStrategy(SignalStrategy):
     def __init__(self, symbol: Symbol, limit: int, trader_name: str) -> None:
         super().__init__(symbol, limit)
-
         self.trader_name = trader_name
 
     def get_signal(self, state: TradingState) -> Signal | None:
@@ -501,10 +468,8 @@ class DeanonymizedTradesStrategy(SignalStrategy):
 
         if has_buy_trade and not has_sell_trade:
             return Signal.LONG
-
         if has_sell_trade and not has_buy_trade:
             return Signal.SHORT
-
         return None
 
 
@@ -535,10 +500,7 @@ class Trader:
                 "KELP": KelpStrategy,
                 "SQUID_INK": lambda sym, lim: DeanonymizedTradesStrategy(sym, lim, "Olivia"),
                 "CROISSANTS": lambda sym, lim: DeanonymizedTradesStrategy(sym, lim, "Olivia"),
-                # # "JAMS": JamsStrategy,
-                # # "DJEMBES": InvertedPicnicBasket1Strategy,
                 "PICNIC_BASKET1": PicnicBasket1Strategy,
-                # # "PICNIC_BASKET2": PicnicBasket2Strategy,
                 "VOLCANIC_ROCK": VolcanicRockStrategy,
                 "VOLCANIC_ROCK_VOUCHER_9500": VolcanicRockStrategy,
                 "VOLCANIC_ROCK_VOUCHER_9750": VolcanicRockStrategy,
