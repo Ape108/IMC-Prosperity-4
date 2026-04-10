@@ -375,58 +375,70 @@ class DeanonymizedTradesStrategy(SignalStrategy):
 
         return None
 
-
 ### STRATEGIES ROUND 0 ###
 
-class TomatoStrategy(MarketMakingStrategy, StatefulStrategy[dict[str, Any]]):
+class OrderBookImbalanceStrategy(Strategy, StatefulStrategy[dict[str, Any]]):
     def __init__(self, symbol: Symbol, limit: int) -> None:
         super().__init__(symbol, limit)
-        self.history: list[float] = []
-        self.window_size = 100
+        # Lowered entry threshold to trigger significantly more trades (65/35 split)
+        self.entry_threshold = 0.3  
+        # Lowered exit threshold to hold onto winners a bit longer
+        self.exit_threshold = 0.05  
+        
+        # Array to hold the last few OBI readings for smoothing
+        self.obi_history: list[float] = []
 
-    def get_micro_price(self, state: TradingState) -> float:
+    def act(self, state: TradingState) -> None:
         order_depth = state.order_depths[self.symbol]
+        position = state.position.get(self.symbol, 0)
+        
         if not order_depth.buy_orders or not order_depth.sell_orders:
-            return self.get_mid_price(state, self.symbol)
-            
+            return
+
         best_bid, bid_vol = sorted(order_depth.buy_orders.items(), reverse=True)[0]
         best_ask, ask_vol = sorted(order_depth.sell_orders.items())[0]
         
-        # In Prosperity, sell volumes are negative integers. We need absolute values.
         bid_vol = abs(bid_vol)
         ask_vol = abs(ask_vol)
+        total_vol = bid_vol + ask_vol
         
-        # Volume-weighted micro-price calculation
-        return (best_bid * ask_vol + best_ask * bid_vol) / (bid_vol + ask_vol)
+        if total_vol == 0:
+            return
 
-    def get_true_value(self, state: TradingState) -> float:
-        # Use Micro-Price instead of Mid-Price
-        micro_price = self.get_micro_price(state)
-        inventory = state.position.get(self.symbol, 0)
-        gamma = 0.005  
+        # 1. Calculate the Raw OBI for this specific tick
+        raw_obi = (bid_vol - ask_vol) / total_vol
         
-        self.history.append(micro_price)
-        if len(self.history) > self.window_size:
-            self.history.pop(0)
-
-        if len(self.history) < 2:
-            sigma = 2.0
+        # 2. Smooth the signal (3-Tick Rolling Average)
+        self.obi_history.append(raw_obi)
+        if len(self.obi_history) > 3:
+            self.obi_history.pop(0)
+            
+        smoothed_obi = sum(self.obi_history) / len(self.obi_history)
+        
+        # 3. Execution Logic using the Smoothed Signal
+        if smoothed_obi > self.entry_threshold:
+            to_buy = self.limit - position
+            if to_buy > 0:
+                self.buy(best_ask, to_buy)
+                
+        elif smoothed_obi < -self.entry_threshold:
+            to_sell = self.limit + position
+            if to_sell > 0:
+                self.sell(best_bid, to_sell)
+                
         else:
-            sigma = pd.Series(self.history).std()
-            if pd.isna(sigma) or sigma < 1.0:
-                sigma = 1.0 
+            if abs(smoothed_obi) < self.exit_threshold:
+                if position > 0:
+                    self.sell(best_ask, position)
+                elif position < 0:
+                    self.buy(best_bid, abs(position))
 
-        reservation_price = micro_price - (inventory * gamma * (sigma**2))
-        
-        # CRITICAL: Round to nearest integer to prevent the base Strategy's 
-        # floor/ceil logic from aggressively tightening the spread.
-        return round(reservation_price)
-
+    # Save and Load state between ticks for the smoothing array
     def save(self) -> dict[str, Any]:
-        return {"history": self.history}
+        return {"obi_history": self.obi_history}
 
     def load(self, data: dict[str, Any]) -> None:
-        self.history = data["history"]
+        self.obi_history = data["obi_history"]
 
 
 class EmeraldStrategy(MarketMakingStrategy, StatefulStrategy[dict[str, Any]]):
@@ -458,7 +470,6 @@ class EmeraldStrategy(MarketMakingStrategy, StatefulStrategy[dict[str, Any]]):
 
         reservation_price = micro_price - (inventory * gamma)
         
-        # Round Emeralds as well to maintain their strict 2-tick spread
         return round(reservation_price)
 
     def save(self) -> dict[str, Any]:
@@ -468,7 +479,6 @@ class EmeraldStrategy(MarketMakingStrategy, StatefulStrategy[dict[str, Any]]):
         self.history = data["history"]
 
 
-
 class Trader:
     def __init__(self) -> None:
         limits = {
@@ -476,12 +486,10 @@ class Trader:
             "EMERALDS": 80
         }
 
+        # Simplified Strategy Initialization (Fixes the Not Callable Error)
         self.strategies: dict[Symbol, Strategy] = {
-            symbol: clazz(symbol, limits[symbol])
-            for symbol, clazz in {
-                "TOMATOES": TomatoStrategy,
-                "EMERALDS": EmeraldStrategy
-            }.items()
+            "TOMATOES": OrderBookImbalanceStrategy("TOMATOES", limits["TOMATOES"]),
+            "EMERALDS": EmeraldStrategy("EMERALDS", limits["EMERALDS"])
         }
 
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
@@ -496,7 +504,11 @@ class Trader:
                 strategy.load(old_trader_data[symbol])
 
             strategy_orders, strategy_conversions = strategy.run(state)
-            orders[symbol] = strategy_orders
+            
+            # Add safety check so we don't submit empty order lists
+            if strategy_orders:
+                orders[symbol] = strategy_orders
+                
             conversions += strategy_conversions
 
             if isinstance(strategy, StatefulStrategy):
@@ -507,5 +519,3 @@ class Trader:
         logger.flush(state, orders, conversions, trader_data)
         print(f"Submitting orders: {orders}")
         return orders, conversions, trader_data
-
-
