@@ -1,1 +1,7 @@
 .venv
+
+submissions/r1/__pycache__/
+submissions/tutorial/__pycache__/
+
+CLAUDE.md
+/.claude
