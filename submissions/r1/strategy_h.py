@@ -252,23 +252,21 @@ class OsmiumStrategy(MarketMakingStrategy):
 
 class PepperRootStrategy(MarketMakingStrategy):
     def get_true_value(self, state: TradingState) -> float:
-        # 1. Get current mid-price and inventory
         mid_price = self.get_mid_price(state, self.symbol)
         inventory = state.position.get(self.symbol, 0)
         
-        # 2. Avellaneda-Stoikov Parameters (Tune these in backtesting)
-        # Emeralds are traditionally very stable, so you might use a lower sigma
-        # or a higher gamma if you want to strictly control inventory.
-        gamma = 0.15 
-        sigma = 1.0  
-        
-        # 3. Calculate Time Remaining Factor
-        total_time = 1_000_000
-        time_left = max(0.0, (total_time - state.timestamp) / total_time)
-        
-        # 4. Calculate Reservation Price
-        reservation_price = mid_price - (inventory * gamma * (sigma**2) * time_left)
-        
+        # sigma: per-tick mid-price volatility from round1 data (two-sided book ticks only)
+        # gamma: calibrated so max inventory (80) at midday gives ~5 tick skew
+        #        adj = q * gamma * sigma^2 * ticks_remaining
+        #        80 * 4e-6 * 1.75^2 * 5000 ≈ 5.0 ticks at full position midday
+        gamma = 4e-6
+        sigma = 1.75  # per-tick std dev for INTARIAN_PEPPER_ROOT
+
+        # Ticks remaining — consistent time unit with per-tick sigma
+        # Each timestamp step = 100 units; day runs 0 → 999900 (9999 ticks)
+        ticks_remaining = max(0.0, (999900 - state.timestamp) / 100)
+
+        reservation_price = mid_price - (inventory * gamma * (sigma**2) * ticks_remaining)
         return reservation_price
 
 
