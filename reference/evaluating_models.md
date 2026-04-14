@@ -1,5 +1,32 @@
 # Evaluating Strategy Performance with rust_backtester
 
+## Prerequisites
+
+### Working Directory
+All `rust_backtester` commands **must be run from `~/prosperity_rust_backtester`** in WSL2. Dataset paths resolve relative to cwd — running from the project directory (`$PROSP4`) will cause `Error: no runnable datasets found`.
+
+```bash
+cd ~/prosperity_rust_backtester
+rust_backtester --trader "$PROSP4/submissions/r1/strategy.py" --dataset round1
+```
+
+### Adding Round Data
+Download `prices_round_X_day_Y.csv` and `trades_round_X_day_Y.csv` from the IMC platform, then copy them into the backtester's dataset directory:
+
+```bash
+mkdir -p ~/prosperity_rust_backtester/datasets/round1
+cp "$PROSP4/datasets/round1/"*.csv ~/prosperity_rust_backtester/datasets/round1/
+```
+
+The backtester picks up `prices_*.csv` + `trades_*.csv` pairs automatically.
+
+### Day Numbering
+Historical days use **negative integers** (`-2`, `-1`) and the live day is `0`. Passing a positive day (e.g. `--day 2`) will match nothing and produce `Error: no runnable datasets found`.
+
+Round 1 valid days: `-2`, `-1`, `0`.
+
+---
+
 ## Why Raw PnL Isn't Enough
 
 Highest PnL on backtester data is necessary but not sufficient:
