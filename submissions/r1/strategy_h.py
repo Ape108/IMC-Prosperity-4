@@ -361,6 +361,7 @@ class PepperRootStrategy(MarketMakingStrategy):
     """ 
         Notes:
         - logs in @logs/r1/sub5
+        - regular mm was much worse than stoikov
         
         Results:
         - Stableish backtest performance with 16k-28k pnl across 3 days
@@ -392,13 +393,47 @@ class PepperRootBuyHoldStrategy(BuyHoldStrategy):
         - Because pepper cosistently has a positive trend over every day, just max buy and hold lol
         - Big gamble on if the trend continues
         - logs in @logs/r1/sub9
-        
+
         Results:
         - Incredibly high and stable backtest performance with 79.1k - 79.5k pnl across 3 days
         - Maintains same backtest performance with pesimistic fill assumptions (queue-penetration = 0) with 79.1k - 79.5k pnl across 3 days
         - IMC performance of 7,286 pnl - very high percentile performance
     """
-    pass
+    def __init__(self, symbol: Symbol, limit: int) -> None:
+        super().__init__(symbol, limit)
+        self.daily_peak: float = 0.0
+        self.stop_triggered: bool = False
+
+    def act(self, state: TradingState) -> None:
+        """
+        Stop-loss: if mid price drops STOP_LOSS_TICKS below the daily peak we sell everything aggressively and stop re-buying for the rest of that day
+        300 ticks ≈ 3.8 sigma over a 2,000-tick window (sigma=1.75/tick) - threshold for significant adverse price movement
+        """  
+        STOP_LOSS_TICKS = 300
+        mid = self.get_mid_price(state, self.symbol)
+
+        if mid > self.daily_peak:
+            self.daily_peak = mid
+
+        if self.daily_peak > 0 and mid < self.daily_peak - STOP_LOSS_TICKS:
+            self.stop_triggered = True
+
+        if self.stop_triggered:
+            position = state.position.get(self.symbol, 0)
+            if position > 0:
+                order_depth = state.order_depths[self.symbol]
+                buy_orders = sorted(order_depth.buy_orders.items(), reverse=True)
+                to_sell = position
+                for price, volume in buy_orders:
+                    if to_sell <= 0:
+                        break
+                    qty = min(to_sell, volume)
+                    self.sell(price, qty)
+                    to_sell -= qty
+            return
+
+        # otherwise keep buy-holding
+        super().act(state)
 
 
 class Trader:
