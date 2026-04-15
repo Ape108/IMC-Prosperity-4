@@ -200,6 +200,52 @@ class StatefulStrategy[T: JSON](Strategy):
         raise NotImplementedError()
 
 
+class Signal(IntEnum):
+    NEUTRAL = 0
+    SHORT = 1
+    LONG = 2
+
+
+class SignalStrategy(StatefulStrategy[int]):
+    def __init__(self, symbol: Symbol, limit: int) -> None:
+        super().__init__(symbol, limit)
+        self.signal = Signal.NEUTRAL
+
+    @abstractmethod
+    def get_signal(self, state: TradingState) -> Signal | None:
+        raise NotImplementedError()
+
+    def act(self, state: TradingState) -> None:
+        new_signal = self.get_signal(state)
+        if new_signal is not None:
+            self.signal = new_signal
+
+        position = state.position.get(self.symbol, 0)
+        order_depth = state.order_depths[self.symbol]
+
+        if self.signal == Signal.NEUTRAL:
+            if position < 0:
+                self.buy(self.get_buy_price(order_depth), -position)
+            elif position > 0:
+                self.sell(self.get_sell_price(order_depth), position)
+        elif self.signal == Signal.SHORT:
+            self.sell(self.get_sell_price(order_depth), self.limit + position)
+        elif self.signal == Signal.LONG:
+            self.buy(self.get_buy_price(order_depth), self.limit - position)
+
+    def get_buy_price(self, order_depth: OrderDepth) -> int:
+        return min(order_depth.sell_orders.keys())
+
+    def get_sell_price(self, order_depth: OrderDepth) -> int:
+        return max(order_depth.buy_orders.keys())
+
+    def save(self) -> int:
+        return self.signal.value
+
+    def load(self, data: int) -> None:
+        self.signal = Signal(data)
+
+
 class MarketMakingStrategy(Strategy):
     def __init__(self, symbol: Symbol, limit: int) -> None:
         super().__init__(symbol, limit)
@@ -243,11 +289,54 @@ class MarketMakingStrategy(Strategy):
             self.sell(price, to_sell)
 
 
+class RollingZScoreStrategy(SignalStrategy, StatefulStrategy[dict[str, Any]]):
+    def __init__(self, symbol: Symbol, limit: int, zscore_period: int, smoothing_period: int, threshold: float) -> None:
+        super().__init__(symbol, limit)
+        self.zscore_period = zscore_period
+        self.smoothing_period = smoothing_period
+        self.threshold = threshold
+        self.history: list[float] = []
+
+    def get_signal(self, state: TradingState) -> Signal | None:
+        self.history.append(self.get_mid_price(state, self.symbol))
+
+        required_history = self.zscore_period + self.smoothing_period
+        if len(self.history) < required_history:
+            return None
+        if len(self.history) > required_history:
+            self.history.pop(0)
+
+        hist = pd.Series(self.history)
+        score = (
+            ((hist - hist.rolling(self.zscore_period).mean()) / hist.rolling(self.zscore_period).std())
+            .rolling(self.smoothing_period)
+            .mean()
+            .iloc[-1]
+        )
+
+        if score < -self.threshold:
+            return Signal.LONG
+        if score > self.threshold:
+            return Signal.SHORT
+        return None
+
+    def save(self) -> dict[str, Any]:
+        return {"signal": SignalStrategy.save(self), "history": self.history}
+
+    def load(self, data: dict[str, Any]) -> None:
+        SignalStrategy.load(self, data["signal"])
+        self.history = data["history"]
+
 ### STRATEGIES ROUND 1 ###
 
 class OsmiumStrategy(MarketMakingStrategy):
     def get_true_value(self, state: TradingState) -> float:
-        return self.get_mid_price(state, self.symbol)
+        expected_true_value = 10_000
+        max_delta = 5
+        mid_price = self.get_mid_price(state, self.symbol)
+        if (expected_true_value - max_delta) <= mid_price <= (expected_true_value + max_delta):
+            return expected_true_value
+        return mid_price
 
 
 class PepperRootStrategy(MarketMakingStrategy):
