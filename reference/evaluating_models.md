@@ -72,13 +72,21 @@ rust_backtester --trader ... --dataset round1 --price-slippage-bps 5
 ```
 
 ### `--persist` and `--carry`
-- `--persist` — saves `traderData` state between days (required for stateful strategies with rolling windows)
+- `--persist` — saves `traderData` to disk after each day so the next day loads it
 - `--carry` — carries positions between days
 
-Use both when testing `StatefulStrategy` subclasses:
+**`--persist` only matters for per-day invocations.** When running a full dataset (no `--day` flag), the backtester runs all days sequentially in the same process, so `traderData` flows naturally in memory regardless of this flag. `--persist` is only needed when running days as separate commands:
+
 ```bash
-rust_backtester --trader ... --dataset round1 --persist --carry
+# These three start cold (traderData = "") without --persist:
+rust_backtester --trader ... --dataset round1 --day -2 --persist
+rust_backtester --trader ... --dataset round1 --day -1 --persist
+rust_backtester --trader ... --dataset round1 --day 0  --persist
 ```
+
+For a `RollingZScoreStrategy` with a 250-tick warmup, skipping `--persist` in the per-day loop makes the strategy look weaker on day -1 and day -0 than it actually is — it's cold-starting each time, not genuinely fragile.
+
+Use `--carry` when positions should persist between days (reflects how the real competition works — you hold inventory overnight):
 
 ### `--artifact-mode`
 Controls what output files are written:
@@ -104,14 +112,14 @@ rust_backtester --trader "$PROSP4/submissions/r1/strategy.py" --dataset round1
 rust_backtester --trader "$PROSP4/submissions/r1/strategy.py" --dataset round1 \
   --queue-penetration 0 --price-slippage-bps 5
 
-# 3. Per-day consistency check
+# 3. Per-day consistency check (use --persist so stateful strategies don't cold-start each day)
 for day in -2 -1 0; do
-  rust_backtester --trader "$PROSP4/submissions/r1/strategy.py" --dataset round1 --day $day
+  rust_backtester --trader "$PROSP4/submissions/r1/strategy.py" --dataset round1 --day $day --persist --carry
 done
 
-# 4. Full artifact for visualizer
+# 4. Full artifact for visualizer (--persist not needed here — full run shares state in-process)
 rust_backtester --trader "$PROSP4/submissions/r1/strategy.py" --dataset round1 \
-  --artifact-mode submission --persist
+  --artifact-mode submission --carry
 ```
 
 ## Decision Rule
