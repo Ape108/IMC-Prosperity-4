@@ -254,7 +254,7 @@ class MarketMakingStrategy(Strategy):
     def get_true_value(self, state: TradingState) -> float:
         raise NotImplementedError()
 
-    def act(self, state: TradingState) -> None:
+    def act(self, state: TradingState, quote: int = 1) -> None:
         true_value = self.get_true_value(state)
 
         order_depth = state.order_depths[self.symbol]
@@ -265,8 +265,9 @@ class MarketMakingStrategy(Strategy):
         to_buy = self.limit - position
         to_sell = self.limit + position
 
-        max_buy_price = int(true_value) - 1 if true_value % 1 == 0 else floor(true_value)
-        min_sell_price = int(true_value) + 1 if true_value % 1 == 0 else ceil(true_value)
+        
+        max_buy_price = int(true_value) - quote if true_value % 1 == 0 else floor(true_value)
+        min_sell_price = int(true_value) + quote if true_value % 1 == 0 else ceil(true_value)
 
         for price, volume in sell_orders:
             if to_buy > 0 and price <= max_buy_price:
@@ -327,6 +328,67 @@ class RollingZScoreStrategy(SignalStrategy, StatefulStrategy[dict[str, Any]]):
         SignalStrategy.load(self, data["signal"])
         self.history = data["history"]
 
+
+class DailyExtremeTradesStrategy(SignalStrategy, StatefulStrategy[dict[str, Any]]):
+    """
+    Detects a bot-like pattern where an anonymous trader consistently buys at the
+    running daily low and sells at the running daily high (Olivia-style, by price
+    extremes rather than by name since R1 buyer/seller fields are empty).
+
+    Signal logic:
+      - LONG  when a market trade hits a new running daily low  (bot buying at low)
+      - SHORT when a market trade hits a new running daily high (bot selling at high)
+      - No signal on the very first trade of the day (just initialises the range)
+
+    State is reset automatically when a new day is detected (timestamp decreases).
+    """
+
+    def __init__(self, symbol: Symbol, limit: int) -> None:
+        super().__init__(symbol, limit)
+        self.running_min: float | None = None  # None = not yet seen a trade today
+        self.running_max: float | None = None
+        self.last_timestamp: int = -1
+
+    def get_signal(self, state: TradingState) -> Signal | None:
+        # Reset when a new trading day starts (timestamp loops back to ~0)
+        if state.timestamp < self.last_timestamp:
+            self.running_min = None
+            self.running_max = None
+        self.last_timestamp = state.timestamp
+
+        # market_trades contains trades settled in the previous tick
+        trades = state.market_trades.get(self.symbol, [])
+        trades = [t for t in trades if t.timestamp == state.timestamp - 100 and t.price > 0]
+
+        new_signal = None
+        for t in trades:
+            if self.running_min is None or t.price < self.running_min:
+                if self.running_min is not None:  # skip first-trade initialisation
+                    new_signal = Signal.LONG
+                self.running_min = t.price
+
+            if self.running_max is None or t.price > self.running_max:
+                if self.running_max is not None:  # skip first-trade initialisation
+                    new_signal = Signal.SHORT
+                self.running_max = t.price
+
+        return new_signal
+
+    def save(self) -> dict[str, Any]:
+        return {
+            "signal": SignalStrategy.save(self),
+            "running_min": self.running_min,
+            "running_max": self.running_max,
+            "last_timestamp": self.last_timestamp,
+        }
+
+    def load(self, data: dict[str, Any]) -> None:
+        SignalStrategy.load(self, data["signal"])
+        self.running_min = data["running_min"]
+        self.running_max = data["running_max"]
+        self.last_timestamp = data.get("last_timestamp", -1)
+
+
 ### STRATEGIES ROUND 1 ###
 
 class OsmiumStrategy(MarketMakingStrategy):
@@ -337,26 +399,61 @@ class OsmiumStrategy(MarketMakingStrategy):
         if (expected_true_value - max_delta) <= mid_price <= (expected_true_value + max_delta):
             return expected_true_value
         return mid_price
-
-
-class PepperRootStrategy(MarketMakingStrategy):
-    def get_true_value(self, state: TradingState) -> float:
-        mid_price = self.get_mid_price(state, self.symbol)
-        inventory = state.position.get(self.symbol, 0)
         
-        # sigma: per-tick mid-price volatility from round1 data (two-sided book ticks only)
-        # gamma: calibrated so max inventory (80) at midday gives ~5 tick skew
-        #        adj = q * gamma * sigma^2 * ticks_remaining
-        #        80 * 4e-6 * 1.75^2 * 5000 ≈ 5.0 ticks at full position midday
-        gamma = 4e-6
-        sigma = 1.75  # per-tick std dev for INTARIAN_PEPPER_ROOT
+        
+class BuyHoldStrategy(Strategy):
+    """
+    Base buy-hold strategy: accumulate to max long and never sell.
 
-        # Ticks remaining — consistent time unit with per-tick sigma
-        # Each timestamp step = 100 units; day runs 0 → 999900 (9999 ticks)
-        ticks_remaining = max(0.0, (999900 - state.timestamp) / 100)
+    Each tick:
+      1. Aggressively hits all available asks (no price filter).
+      2. Posts any remaining capacity as a passive limit at best_bid+1 to
+         get filled in future ticks.
 
-        reservation_price = mid_price - (inventory * gamma * (sigma**2) * ticks_remaining)
-        return reservation_price
+    Subclass and override act() to add product-specific entry filters,
+    or override get_max_price() to cap the price you're willing to pay.
+    """
+
+    def get_max_price(self, state: TradingState) -> int | None:
+        """Return None to buy at any price, or an int to cap entry price."""
+        return None
+
+    def act(self, state: TradingState) -> None:
+        position = state.position.get(self.symbol, 0)
+        to_buy = self.limit - position
+        if to_buy <= 0:
+            return
+
+        order_depth = state.order_depths[self.symbol]
+        sell_orders = sorted(order_depth.sell_orders.items())
+        buy_orders = sorted(order_depth.buy_orders.items(), reverse=True)
+        max_price = self.get_max_price(state)
+
+        # Aggressively take asks (optionally filtered by max_price)
+        for price, volume in sell_orders:
+            if to_buy <= 0:
+                break
+            if max_price is not None and price > max_price:
+                break
+            quantity = min(to_buy, -volume)
+            self.buy(price, quantity)
+            to_buy -= quantity
+
+        # Post remainder as passive limit buy to accumulate on future ticks
+        if to_buy > 0:
+            best_bid = buy_orders[0][0] if buy_orders else sell_orders[0][0] - 2
+            passive_price = best_bid + 1
+            if max_price is None or passive_price <= max_price:
+                self.buy(passive_price, to_buy)
+
+
+class PepperRootBuyHoldStrategy(BuyHoldStrategy):
+    """
+    PEPPER_ROOT price drifts upward within each day — hold max long all day.
+    No price cap: buy at any ask to accumulate as fast as possible.
+    """
+    pass
+
 
 
 class Trader:
@@ -370,7 +467,7 @@ class Trader:
             symbol: clazz(symbol, limits[symbol])
             for symbol, clazz in {
                 "ASH_COATED_OSMIUM": OsmiumStrategy,
-                "INTARIAN_PEPPER_ROOT": PepperRootStrategy
+                "INTARIAN_PEPPER_ROOT": PepperRootBuyHoldStrategy
             }.items()
         }
 
