@@ -290,117 +290,6 @@ class MarketMakingStrategy(Strategy):
             self.sell(price, to_sell)
 
 
-class RollingZScoreStrategy(SignalStrategy, StatefulStrategy[dict[str, Any]]):
-    def __init__(self, symbol: Symbol, limit: int, zscore_period: int, smoothing_period: int, threshold: float) -> None:
-        super().__init__(symbol, limit)
-        self.zscore_period = zscore_period
-        self.smoothing_period = smoothing_period
-        self.threshold = threshold
-        self.history: list[float] = []
-
-    def get_signal(self, state: TradingState) -> Signal | None:
-        self.history.append(self.get_mid_price(state, self.symbol))
-
-        required_history = self.zscore_period + self.smoothing_period
-        if len(self.history) < required_history:
-            return None
-        if len(self.history) > required_history:
-            self.history.pop(0)
-
-        hist = pd.Series(self.history)
-        score = (
-            ((hist - hist.rolling(self.zscore_period).mean()) / hist.rolling(self.zscore_period).std())
-            .rolling(self.smoothing_period)
-            .mean()
-            .iloc[-1]
-        )
-
-        if score < -self.threshold:
-            return Signal.LONG
-        if score > self.threshold:
-            return Signal.SHORT
-        return None
-
-    def save(self) -> dict[str, Any]:
-        return {"signal": SignalStrategy.save(self), "history": self.history}
-
-    def load(self, data: dict[str, Any]) -> None:
-        SignalStrategy.load(self, data["signal"])
-        self.history = data["history"]
-
-
-class DailyExtremeTradesStrategy(SignalStrategy, StatefulStrategy[dict[str, Any]]):
-    """
-    Detects a bot-like pattern where an anonymous trader consistently buys at the
-    running daily low and sells at the running daily high (Olivia-style, by price
-    extremes rather than by name since R1 buyer/seller fields are empty).
-
-    Signal logic:
-      - LONG  when a market trade hits a new running daily low  (bot buying at low)
-      - SHORT when a market trade hits a new running daily high (bot selling at high)
-      - No signal on the very first trade of the day (just initialises the range)
-
-    State is reset automatically when a new day is detected (timestamp decreases).
-    """
-
-    def __init__(self, symbol: Symbol, limit: int) -> None:
-        super().__init__(symbol, limit)
-        self.running_min: float | None = None  # None = not yet seen a trade today
-        self.running_max: float | None = None
-        self.last_timestamp: int = -1
-
-    def get_signal(self, state: TradingState) -> Signal | None:
-        # Reset when a new trading day starts (timestamp loops back to ~0)
-        if state.timestamp < self.last_timestamp:
-            self.running_min = None
-            self.running_max = None
-        self.last_timestamp = state.timestamp
-
-        # market_trades contains trades settled in the previous tick
-        trades = state.market_trades.get(self.symbol, [])
-        trades = [t for t in trades if t.timestamp == state.timestamp - 100 and t.price > 0]
-
-        new_signal = None
-        for t in trades:
-            if self.running_min is None or t.price < self.running_min:
-                if self.running_min is not None:  # skip first-trade initialisation
-                    new_signal = Signal.LONG
-                self.running_min = t.price
-
-            if self.running_max is None or t.price > self.running_max:
-                if self.running_max is not None:  # skip first-trade initialisation
-                    new_signal = Signal.SHORT
-                self.running_max = t.price
-
-        return new_signal
-
-    def save(self) -> dict[str, Any]:
-        return {
-            "signal": SignalStrategy.save(self),
-            "running_min": self.running_min,
-            "running_max": self.running_max,
-            "last_timestamp": self.last_timestamp,
-        }
-
-    def load(self, data: dict[str, Any]) -> None:
-        SignalStrategy.load(self, data["signal"])
-        self.running_min = data["running_min"]
-        self.running_max = data["running_max"]
-        self.last_timestamp = data.get("last_timestamp", -1)
-
-
-### STRATEGIES ROUND 1 ###
-
-class OsmiumStrategy(MarketMakingStrategy):
-    def get_true_value(self, state: TradingState) -> float:
-        expected_true_value = 10_000
-        max_delta = 5
-        mid_price = self.get_mid_price(state, self.symbol)
-        if (expected_true_value - max_delta) <= mid_price <= (expected_true_value + max_delta):
-            return expected_true_value
-        return mid_price
-        
-        
 class BuyHoldStrategy(Strategy):
     """
     Base buy-hold strategy: accumulate to max long and never sell.
@@ -447,13 +336,69 @@ class BuyHoldStrategy(Strategy):
                 self.buy(passive_price, to_buy)
 
 
+### STRATEGIES ROUND 1 ###
+
+class OsmiumStrategy(MarketMakingStrategy):
+    """ 
+        Notes:
+        - IMC hinted at a possible hidden trader like Olivia, couldn't find anything though
+        
+        Results:
+        - Stable backtest performance with 16k-17k pnl across 3 days
+        - Maintains backtest performance with pesimistic fill assumptions (queue-penetration = 0) with 3.2k-3.6k pnl across 3 days
+        - IMC performance of 2,837.563 pnl - seems to be peak performance and upper percentile
+    """
+    def get_true_value(self, state: TradingState) -> float:
+        expected_true_value = 10_000
+        max_delta = 5
+        mid_price = self.get_mid_price(state, self.symbol)
+        if (expected_true_value - max_delta) <= mid_price <= (expected_true_value + max_delta):
+            return expected_true_value
+        return mid_price
+        
+
+class PepperRootStrategy(MarketMakingStrategy):
+    """ 
+        Notes:
+        - logs in @logs/r1/sub5
+        
+        Results:
+        - Stableish backtest performance with 16k-28k pnl across 3 days
+        - Falls off considerably with pesimistic fill assumptions (queue-penetration = 0) with -1.5k to 16k pnl across 3 days
+        - IMC performance of 1,331.297 pnl - very low percentile performance
+    """
+    def get_true_value(self, state: TradingState) -> float:
+        mid_price = self.get_mid_price(state, self.symbol)
+        inventory = state.position.get(self.symbol, 0)
+        
+        # sigma: per-tick mid-price volatility from round1 data (two-sided book ticks only)
+        # gamma: calibrated so max inventory (80) at midday gives ~5 tick skew
+        #        adj = q * gamma * sigma^2 * ticks_remaining
+        #        80 * 4e-6 * 1.75^2 * 5000 ≈ 5.0 ticks at full position midday
+        gamma = 4e-6
+        sigma = 1.75  # per-tick std dev for INTARIAN_PEPPER_ROOT
+
+        # Ticks remaining — consistent time unit with per-tick sigma
+        # Each timestamp step = 100 units; day runs 0 → 999900 (9999 ticks)
+        ticks_remaining = max(0.0, (999900 - state.timestamp) / 100)
+
+        reservation_price = mid_price - (inventory * gamma * (sigma**2) * ticks_remaining)
+        return reservation_price
+
+
 class PepperRootBuyHoldStrategy(BuyHoldStrategy):
     """
-    PEPPER_ROOT price drifts upward within each day — hold max long all day.
-    No price cap: buy at any ask to accumulate as fast as possible.
+        Notes:
+        - Because pepper cosistently has a positive trend over every day, just max buy and hold lol
+        - Big gamble on if the trend continues
+        - logs in @logs/r1/sub9
+        
+        Results:
+        - Incredibly high and stable backtest performance with 79.1k - 79.5k pnl across 3 days
+        - Maintains same backtest performance with pesimistic fill assumptions (queue-penetration = 0) with 79.1k - 79.5k pnl across 3 days
+        - IMC performance of 7,286 pnl - very high percentile performance
     """
     pass
-
 
 
 class Trader:
