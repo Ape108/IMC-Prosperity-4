@@ -3,3 +3,4 @@ numpy==2.4.4
 pandas==3.0.2
 python-dateutil==2.9.0.post0
 six==1.17.0
+matplotlib==3.10.8
