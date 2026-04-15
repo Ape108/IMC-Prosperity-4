@@ -361,7 +361,6 @@ class PepperRootStrategy(MarketMakingStrategy):
     """ 
         Notes:
         - logs in @logs/r1/sub5
-        - regular mm was much worse than stoikov
         
         Results:
         - Stableish backtest performance with 16k-28k pnl across 3 days
@@ -385,6 +384,18 @@ class PepperRootStrategy(MarketMakingStrategy):
 
         reservation_price = mid_price - (inventory * gamma * (sigma**2) * ticks_remaining)
         return reservation_price
+
+
+class PepperRootMMStrategy(MarketMakingStrategy):
+    """
+        Notes:
+
+        Results:
+        - Not very stable backtest performance with 7.2k - 60k pnl across 3 days
+        - Pesimistic fill assumptions (queue-penetration = 0) has significant negative impact with -3.2k - 42k pnl across 3 days
+    """
+    def get_true_value(self, state: TradingState) -> float:
+        return self.get_mid_price(state, self.symbol)
 
 
 class PepperRootBuyHoldStrategy(BuyHoldStrategy):
@@ -447,7 +458,7 @@ class Trader:
             symbol: clazz(symbol, limits[symbol])
             for symbol, clazz in {
                 "ASH_COATED_OSMIUM": OsmiumStrategy,
-                "INTARIAN_PEPPER_ROOT": PepperRootBuyHoldStrategy
+                "INTARIAN_PEPPER_ROOT": PepperRootBuyHoldStrategy,
             }.items()
         }
 
