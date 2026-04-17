@@ -398,6 +398,158 @@ class PepperRootMMStrategy(MarketMakingStrategy):
         return self.get_mid_price(state, self.symbol)
 
 
+class PepperRootAdaptiveMMStrategy(StatefulStrategy[list[float]]):
+    """
+    Regime-adaptive market-making for INTARIAN_PEPPER_ROOT.
+
+    Fair value: EW-smoothed blend of microprice (70%) + volume-wall mid (30%).
+    Quotes are shifted each tick by three signals:
+      - Top-of-book imbalance  (+lean with order flow)
+      - Short-term momentum    (+lean with trend)
+      - Inventory skew         (-lean against overexposure)
+
+    Momentum guards suppress passive bid/ask posting when inventory is large
+    and price is moving against that inventory. This prevents catching
+    falling knives in sustained bear frames — the failure mode identified
+    in the AS strategy with a hardcoded bullish drift.
+
+    Compared to PepperRootBuyHoldStrategy:
+      - Lower ceiling in a confirmed bull run (doesn't go max-long immediately)
+      - Much better floor in bear/choppy regimes (inventory self-corrects)
+
+    Results:
+      - TBD — backtest before submitting
+    """
+
+    WINDOW = 20           # EW history length for fair value smoothing
+    TAKE_SIZE = 6         # Max units per aggressive take
+    PASSIVE_SIZE = 8      # Base passive quote size
+    TAKE_EDGE = 0.75      # Min edge required to take aggressively
+    INV_GUARD_THRESH = 35 # Inventory level that activates momentum guards
+
+    def __init__(self, symbol: Symbol, limit: int) -> None:
+        super().__init__(symbol, limit)
+        self.fair_history: list[float] = []
+
+    def _best_bid_ask(self, od: OrderDepth) -> tuple[int | None, int | None]:
+        best_bid = max(od.buy_orders.keys()) if od.buy_orders else None
+        best_ask = min(od.sell_orders.keys()) if od.sell_orders else None
+        return best_bid, best_ask
+
+    def _microprice(self, od: OrderDepth, best_bid: int, best_ask: int) -> float:
+        bid_vol = od.buy_orders.get(best_bid, 0)
+        ask_vol = -od.sell_orders.get(best_ask, 0)
+        total = bid_vol + ask_vol
+        if total == 0:
+            return (best_bid + best_ask) / 2.0
+        return (best_bid * ask_vol + best_ask * bid_vol) / total
+
+    def _wall_mid(self, od: OrderDepth, volume_threshold: int = 10) -> float | None:
+        """Mid-price anchored to the nearest large-volume levels on each side."""
+        wall_bid = next(
+            (p for p, v in sorted(od.buy_orders.items(), reverse=True) if v >= volume_threshold),
+            None,
+        )
+        wall_ask = next(
+            (p for p, v in sorted(od.sell_orders.items()) if -v >= volume_threshold),
+            None,
+        )
+        if wall_bid is None or wall_ask is None:
+            return None
+        return (wall_bid + wall_ask) / 2.0
+
+    def act(self, state: TradingState) -> None:
+        od = state.order_depths[self.symbol]
+        pos = state.position.get(self.symbol, 0)
+
+        best_bid, best_ask = self._best_bid_ask(od)
+        if best_bid is None or best_ask is None:
+            return
+
+        spread = best_ask - best_bid
+        mid = (best_bid + best_ask) / 2.0
+
+        wall_mid = self._wall_mid(od)
+        micro = self._microprice(od, best_bid, best_ask)
+        fair_input = 0.7 * micro + 0.3 * (wall_mid if wall_mid is not None else mid)
+
+        self.fair_history.append(fair_input)
+        if len(self.fair_history) > self.WINDOW:
+            self.fair_history.pop(0)
+
+        weights = list(range(1, len(self.fair_history) + 1))
+        fair = sum(w * x for w, x in zip(weights, self.fair_history)) / sum(weights)
+
+        momentum = 0.0
+        if len(self.fair_history) >= 5:
+            momentum = self.fair_history[-1] - self.fair_history[-5]
+
+        bid_vol = od.buy_orders.get(best_bid, 0)
+        ask_vol = -od.sell_orders.get(best_ask, 0)
+        imbalance = (bid_vol - ask_vol) / (bid_vol + ask_vol) if (bid_vol + ask_vol) > 0 else 0.0
+
+        inv_skew = 1.5 * (pos / self.limit)
+
+        take_buy_thresh = fair - self.TAKE_EDGE
+        take_sell_thresh = fair + self.TAKE_EDGE
+
+        # Don't fade hard directional moves
+        if momentum > 1.0:
+            take_buy_thresh += 0.5
+            take_sell_thresh += 1.0
+        elif momentum < -1.0:
+            take_buy_thresh -= 1.0
+            take_sell_thresh -= 0.5
+
+        to_buy = self.limit - pos
+        to_sell = self.limit + pos
+
+        # Aggressive takes — only when edge is confirmed and order flow isn't opposing
+        if to_buy > 0 and best_ask <= take_buy_thresh and imbalance > -0.6:
+            qty = min(to_buy, self.TAKE_SIZE)
+            self.buy(best_ask, qty)
+            pos += qty
+            to_buy -= qty
+            to_sell += qty
+
+        if to_sell > 0 and best_bid >= take_sell_thresh and imbalance < 0.6:
+            qty = min(to_sell, self.TAKE_SIZE)
+            self.sell(best_bid, qty)
+            pos -= qty
+            to_sell -= qty
+            to_buy += qty
+
+        # Passive quoting — only meaningful when spread allows it
+        if spread < 2:
+            return
+
+        signal_shift = 0.5 * imbalance + 0.3 * momentum - inv_skew
+
+        bid_px = int(floor(min(best_bid + 1, fair - 1 + signal_shift)))
+        ask_px = int(ceil(max(best_ask - 1, fair + 1 + signal_shift)))
+
+        inventory_penalty = int(abs(pos) / 15)
+        passive_size = max(2, self.PASSIVE_SIZE - inventory_penalty)
+
+        # Momentum guards: stop adding to inventory that's already moving against us
+        can_post_bid = not (pos > self.INV_GUARD_THRESH and momentum < 0)
+        can_post_ask = not (pos < -self.INV_GUARD_THRESH and momentum > 0)
+
+        buy_size = min(to_buy, passive_size)
+        sell_size = min(to_sell, passive_size)
+
+        if can_post_bid and buy_size > 0:
+            self.buy(bid_px, buy_size)
+        if can_post_ask and sell_size > 0:
+            self.sell(ask_px, sell_size)
+
+    def save(self) -> list[float]:
+        return self.fair_history
+
+    def load(self, data: list[float]) -> None:
+        self.fair_history = data
+
+
 class PepperRootBuyHoldStrategy(BuyHoldStrategy):
     """
         Notes:
@@ -447,6 +599,129 @@ class PepperRootBuyHoldStrategy(BuyHoldStrategy):
         super().act(state)
 
 
+class PepperRootDynamicASStrategy(StatefulStrategy[list[float]]):
+    """
+    Avellaneda-Stoikov MM for INTARIAN_PEPPER_ROOT with data-driven drift.
+
+    Replaces the hardcoded bullish_drift = 2.0 with a slope estimated via
+    linear regression over recent mid-price observations. The directional lean
+    is now derived from what the data actually shows, not assumed in advance:
+
+      drift ≈ +0.1 ticks/tick  →  bullish regime, leans long
+      drift ≈  0               →  flat/uncertain, inventory penalty dominates
+      drift ≈ -0.1 ticks/tick  →  bearish regime, leans short
+
+    At drift=0.1, the inventory penalty (0.3 ticks at pos=40) meaningfully
+    opposes overexposure — unlike the hardcoded 2.0 which overwhelmed it.
+
+    0-EV clearing is implemented as direct aggressive orders (not quote=0,
+    which is a no-op for non-integer true_value in the base class).
+
+    Results:
+        - Stable backtest performance with 54k - 55k pnl across 3 days
+        - Beats backtest performance with pesimistic fill assumptions (queue-penetration = 0) with 54k - 56k pnl across 3 days
+        - IMC performance of 4,528.813 pnl - much better than prev MM
+    """
+
+    GAMMA = 0.005       # Risk aversion (A-S)
+    SIGMA = 1.75        # Per-tick mid-price volatility
+    DRIFT_WINDOW = 100  # Observations kept for slope estimation
+    DRIFT_MIN_OBS = 10  # Minimum observations before drift is trusted
+    DRIFT_CAP = 3.0     # Clamp to prevent outlier-driven extremes
+
+    def __init__(self, symbol: Symbol, limit: int) -> None:
+        super().__init__(symbol, limit)
+        self.mid_history: list[float] = []
+
+    def _compute_drift(self) -> float:
+        n = len(self.mid_history)
+        if n < self.DRIFT_MIN_OBS:
+            return 0.0
+        x_mean = (n - 1) / 2.0
+        y_mean = sum(self.mid_history) / n
+        num = sum((i - x_mean) * (y - y_mean) for i, y in enumerate(self.mid_history))
+        den = sum((i - x_mean) ** 2 for i in range(n))
+        if den == 0:
+            return 0.0
+        slope = num / den
+        return max(-self.DRIFT_CAP, min(self.DRIFT_CAP, slope))
+
+    def act(self, state: TradingState) -> None:
+        order_depth = state.order_depths[self.symbol]
+        buy_orders = sorted(order_depth.buy_orders.items(), reverse=True)
+        sell_orders = sorted(order_depth.sell_orders.items())
+
+        popular_mid = self.get_mid_price(state, self.symbol)
+        self.mid_history.append(popular_mid)
+        if len(self.mid_history) > self.DRIFT_WINDOW:
+            self.mid_history.pop(0)
+
+        inventory = state.position.get(self.symbol, 0)
+        to_buy = self.limit - inventory
+        to_sell = self.limit + inventory
+
+        # 0-EV clearing: near position limits, skip passive quoting and
+        # aggressively cross the spread to neutralize. Fixes the quote=0
+        # no-op in the original AS (floor/ceil ignores quote for non-integer
+        # true_value).
+        if abs(inventory) >= self.limit - 5:
+            if inventory > 0:
+                for price, volume in buy_orders:
+                    if to_sell <= 0:
+                        break
+                    qty = min(to_sell, volume)
+                    self.sell(price, qty)
+                    to_sell -= qty
+            else:
+                for price, volume in sell_orders:
+                    if to_buy <= 0:
+                        break
+                    qty = min(to_buy, -volume)
+                    self.buy(price, qty)
+                    to_buy -= qty
+            return
+
+        total_time = 1_000_000
+        time_left = max(0.0, (total_time - state.timestamp) / total_time)
+        drift = self._compute_drift()
+        reservation_price = popular_mid - (inventory * self.GAMMA * (self.SIGMA ** 2) * time_left) + drift
+
+        # Suppress passive sells when trend is confirmed bullish — stops the
+        # strategy from systematically selling into a rising market.
+        ask_suppressed = drift > 0.05
+
+        quote = 1
+        max_buy_price = int(reservation_price) - quote if reservation_price % 1 == 0 else floor(reservation_price)
+        min_sell_price = int(reservation_price) + quote if reservation_price % 1 == 0 else ceil(reservation_price)
+
+        for price, volume in sell_orders:
+            if to_buy > 0 and price <= max_buy_price:
+                quantity = min(to_buy, -volume)
+                self.buy(price, quantity)
+                to_buy -= quantity
+
+        if to_buy > 0:
+            price = next((p + 1 for p, _ in buy_orders if p < max_buy_price), max_buy_price)
+            self.buy(price, to_buy)
+
+        if not ask_suppressed:
+            for price, volume in buy_orders:
+                if to_sell > 0 and price >= min_sell_price:
+                    quantity = min(to_sell, volume)
+                    self.sell(price, quantity)
+                    to_sell -= quantity
+
+            if to_sell > 0:
+                price = next((p - 1 for p, _ in sell_orders if p > min_sell_price), min_sell_price)
+                self.sell(price, to_sell)
+
+    def save(self) -> list[float]:
+        return self.mid_history
+
+    def load(self, data: list[float]) -> None:
+        self.mid_history = data
+
+
 class Trader:
     def __init__(self) -> None:
         limits = {
@@ -458,7 +733,7 @@ class Trader:
             symbol: clazz(symbol, limits[symbol])
             for symbol, clazz in {
                 "ASH_COATED_OSMIUM": OsmiumStrategy,
-                "INTARIAN_PEPPER_ROOT": PepperRootBuyHoldStrategy,
+                "INTARIAN_PEPPER_ROOT": PepperRootDynamicASStrategy
             }.items()
         }
 
