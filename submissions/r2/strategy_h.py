@@ -480,10 +480,14 @@ class Trader:
         }
 
     def bid(self) -> int:
-        """ For bid
-            - 25 for default
+        """MAF blind auction bid in XIRECs.
+
+        Break-even analysis (backtester shows 80% of quotes; MAF unlocks 100%):
+            - Avg daily backtest PnL: ~73,242 seashells
+            - Assume we gain from 25% more fills: ~18,310 seashells (73,242 * 0.25)
+            - Break-even bid: ~18,310 so anything below is profitable
         """
-        return 25
+        return 250
     
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
         orders = {}
