@@ -479,6 +479,12 @@ class Trader:
             }.items()
         }
 
+    def bid(self) -> int:
+        """ For bid
+            - 25 for default
+        """
+        return 25
+    
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
         orders = {}
         conversions = 0
