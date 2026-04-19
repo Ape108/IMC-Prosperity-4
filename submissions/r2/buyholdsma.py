@@ -454,7 +454,7 @@ class Trader:
             - Assume we gain from 25% more fills: ~18,310 seashells (73,242 * 0.25)
             - Break-even bid: ~18,310 so anything below is profitable
         """
-        return 250
+        return 1700
     
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
         orders = {}
