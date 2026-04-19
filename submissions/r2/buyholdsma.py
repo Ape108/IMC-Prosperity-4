@@ -450,11 +450,11 @@ class Trader:
         """MAF blind auction bid in XIRECs.
 
         Break-even analysis (backtester shows 80% of quotes; MAF unlocks 100%):
-            - Avg daily backtest PnL: ~73,242 seashells
-            - Assume we gain from 25% more fills: ~18,310 seashells (73,242 * 0.25)
-            - Break-even bid: ~18,310 so anything below is profitable
+            - Avg daily backtest PnL: ~75,600 seashells
+            - Assume we gain from 25% more fills: ~18,900 seashells (75,600 * 0.25)
+            - Break-even bid: ~18,900 so anything below is profitable
         """
-        return 1700
+        return 15_000
     
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
         orders = {}
