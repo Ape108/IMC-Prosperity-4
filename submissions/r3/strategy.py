@@ -407,7 +407,6 @@ class HydrogelStrategy(MarketMakingStrategy):
         -
 
         Results:
-        - 
         - Backtest results are 0 pnl
     """
     def get_true_value(self, state: TradingState) -> float:
@@ -425,7 +424,7 @@ class VelvetfruitStrategy(RollingZScoreStrategy):
         -
 
         Results:
-        - 
+        - 0 pnl in backtest
     """
     def __init__(self, symbol: Symbol, limit: int) -> None:
         super().__init__(symbol, limit, zscore_period=75, smoothing_period=100, threshold=0.5)
