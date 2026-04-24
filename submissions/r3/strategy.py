@@ -1,10 +1,12 @@
 import json
 import math
 from abc import abstractmethod
+from enum import IntEnum
 from math import ceil, floor
 from typing import Any
 
 import numpy as np
+import pandas as pd
 from datamodel import Listing, Observation, Order, OrderDepth, ProsperityEncoder, Symbol, Trade, TradingState
 
 type JSON = dict[str, Any] | list[Any] | str | int | float | bool | None
@@ -172,6 +174,95 @@ class Strategy[T: JSON]:
         return (popular_buy + popular_sell) / 2
 
 
+class StatefulStrategy[T: JSON](Strategy):
+    @abstractmethod
+    def save(self) -> T:
+        raise NotImplementedError()
+
+    @abstractmethod
+    def load(self, data: T) -> None:
+        raise NotImplementedError()
+
+
+class Signal(IntEnum):
+    NEUTRAL = 0
+    SHORT = 1
+    LONG = 2
+
+
+class SignalStrategy(StatefulStrategy[int]):
+    def __init__(self, symbol: Symbol, limit: int) -> None:
+        super().__init__(symbol, limit)
+        self.signal = Signal.NEUTRAL
+
+    @abstractmethod
+    def get_signal(self, state: TradingState) -> Signal | None:
+        raise NotImplementedError()
+
+    def act(self, state: TradingState) -> None:
+        new_signal = self.get_signal(state)
+        if new_signal is not None:
+            self.signal = new_signal
+
+        position = state.position.get(self.symbol, 0)
+        od = state.order_depths[self.symbol]
+
+        if self.signal == Signal.NEUTRAL:
+            if position < 0:
+                self.buy(min(od.sell_orders.keys()), -position)
+            elif position > 0:
+                self.sell(max(od.buy_orders.keys()), position)
+        elif self.signal == Signal.SHORT:
+            self.sell(max(od.buy_orders.keys()), self.limit + position)
+        elif self.signal == Signal.LONG:
+            self.buy(min(od.sell_orders.keys()), self.limit - position)
+
+    def save(self) -> int:
+        return self.signal.value
+
+    def load(self, data: int) -> None:
+        self.signal = Signal(data)
+
+
+class RollingZScoreStrategy(SignalStrategy, StatefulStrategy[dict[str, Any]]):
+    def __init__(self, symbol: Symbol, limit: int, zscore_period: int, smoothing_period: int, threshold: float) -> None:
+        super().__init__(symbol, limit)
+        self.zscore_period = zscore_period
+        self.smoothing_period = smoothing_period
+        self.threshold = threshold
+        self.history: list[float] = []
+
+    def get_signal(self, state: TradingState) -> Signal | None:
+        self.history.append(self.get_mid_price(state, self.symbol))
+
+        required = self.zscore_period + self.smoothing_period
+        if len(self.history) < required:
+            return None
+        if len(self.history) > required:
+            self.history.pop(0)
+
+        hist = pd.Series(self.history)
+        score = (
+            ((hist - hist.rolling(self.zscore_period).mean()) / hist.rolling(self.zscore_period).std())
+            .rolling(self.smoothing_period)
+            .mean()
+            .iloc[-1]
+        )
+
+        if score < -self.threshold:
+            return Signal.LONG
+        if score > self.threshold:
+            return Signal.SHORT
+        return None
+
+    def save(self) -> dict[str, Any]:
+        return {"signal": SignalStrategy.save(self), "history": self.history}
+
+    def load(self, data: dict[str, Any]) -> None:
+        SignalStrategy.load(self, data["signal"])
+        self.history = data["history"]
+
+
 class MarketMakingStrategy(Strategy):
     @abstractmethod
     def get_true_value(self, state: TradingState) -> float:
@@ -221,10 +312,31 @@ TICKS_PER_DAY = 1_000_000
 # ── Voucher IV smile scalper ─────────────────────────────────────────────────
 
 class VoucherStrategy(Strategy):
-    def __init__(self, symbol: str, limit: int, strike: int, k: float = 200.0) -> None:
+    """
+        Notes:
+        -
+
+        Results:
+            Backtest:
+            - 4000 strike has 0 pnl
+            - 4500 strike has 0 pnl
+            - 5000 strike has -114 to 162 pnl
+            - 5100 strike has 6 to 49 pnl
+            - 5200 strike has -106 to 1 pnl
+            - 5300 strike has -563 to -13 pnl
+            - 5400 strike has -3 to 0 pnl
+            - 5500 strike has 0 pnl
+            - 6000 strike has 0 pnl
+            - 6500 strike has 0 pnl
+        
+    """
+    def __init__(self, symbol: str, 
+                 limit: int, strike: int, k: float = 300.0, min_residual: float = 0.01, max_otm_moneyness: float = 1.020) -> None:
         super().__init__(symbol, limit)
         self.strike = strike
         self.k = k
+        self.min_residual = min_residual      # dead-band: ignore small residuals
+        self.max_otm_moneyness = max_otm_moneyness  # skip far-OTM strikes (smile fit unreliable there)
 
     def get_required_symbols(self) -> list[Symbol]:
         return [VEV_SPOT] + VOUCHER_SYMBOLS
@@ -253,6 +365,10 @@ class VoucherStrategy(Strategy):
         if coeffs is None:
             return
 
+        # Don't trade far-OTM strikes — smile fit is unreliable at the right wing
+        if self.strike / spot > self.max_otm_moneyness:
+            return
+
         od = state.order_depths[self.symbol]
         my_mid = (max(od.buy_orders.keys()) + min(od.sell_orders.keys())) / 2.0
         my_intrinsic = max(0.0, spot - self.strike)
@@ -264,8 +380,12 @@ class VoucherStrategy(Strategy):
         fitted_iv = float(np.polyval(coeffs, self.strike / spot))
         residual = my_iv - fitted_iv
 
+        # high IV residual → option overpriced → sell (negative target)
+        # low IV residual → option underpriced → buy (positive target)
+        if abs(residual) < self.min_residual:
+            return
         position = state.position.get(self.symbol, 0)
-        target = int(np.clip(self.k * residual, -self.limit, self.limit))
+        target = int(np.clip(-self.k * residual, -self.limit, self.limit))
 
         if target > position:
             qty_needed = target - position
@@ -282,18 +402,60 @@ class VoucherStrategy(Strategy):
 # ── Delta-1 products ─────────────────────────────────────────────────────────
 
 class HydrogelStrategy(MarketMakingStrategy):
+    """
+        Notes:
+        -
+
+        Results:
+        - 
+        - Backtest results are 0 pnl
+    """
     def get_true_value(self, state: TradingState) -> float:
-        return self.get_mid_price(state, self.symbol)
+        expected_true_value = 10_000
+        max_delta = 5
+        mid_price = self.get_mid_price(state, self.symbol)
+        if (expected_true_value - max_delta) <= mid_price <= (expected_true_value + max_delta):
+            return expected_true_value
+        return mid_price
+
+
+class VelvetfruitStrategy(RollingZScoreStrategy):
+    """
+        Notes:
+        -
+
+        Results:
+        - 
+    """
+    def __init__(self, symbol: Symbol, limit: int) -> None:
+        super().__init__(symbol, limit, zscore_period=75, smoothing_period=100, threshold=0.5)
 
 
 # ── Trader ───────────────────────────────────────────────────────────────────
 
 class Trader:
     def __init__(self) -> None:
+        limits = {
+            "HYDROGEL_PACK": 200,
+            "VELVETFRUIT_EXTRACT": 200,
+            "VEV_4000": 300,
+            "VEV_4500": 300,
+            "VEV_5000": 300,
+            "VEV_5100": 300,
+            "VEV_5200": 300,
+            "VEV_5300": 300,
+            "VEV_5400": 300,
+            "VEV_5500": 300,
+            "VEV_6000": 300,
+            "VEV_6500": 300,
+        }
+
         self.strategies: dict[Symbol, Strategy] = {
-            "HYDROGEL_PACK": HydrogelStrategy("HYDROGEL_PACK", 200),
+            "HYDROGEL_PACK": HydrogelStrategy("HYDROGEL_PACK", limits["HYDROGEL_PACK"]),
+            "VELVETFRUIT_EXTRACT": VelvetfruitStrategy("VELVETFRUIT_EXTRACT", limits["VELVETFRUIT_EXTRACT"]),
+            # Iterates over each voucher and creates a strategy for it with the appropriate strike
             **{
-                f"VEV_{strike}": VoucherStrategy(f"VEV_{strike}", 300, strike)
+                f"VEV_{strike}": VoucherStrategy(f"VEV_{strike}", limits[f"VEV_{strike}"], strike)
                 for strike in STRIKES
             },
         }
@@ -302,11 +464,20 @@ class Trader:
         orders: dict[Symbol, list[Order]] = {}
         conversions = 0
 
+        old_trader_data = json.loads(state.traderData) if state.traderData not in ("", None) else {}
+        new_trader_data: dict[str, Any] = {}
+
         for symbol, strategy in self.strategies.items():
+            if isinstance(strategy, StatefulStrategy) and symbol in old_trader_data:
+                strategy.load(old_trader_data[symbol])
+
             strategy_orders, strategy_conversions = strategy.run(state)
             orders[symbol] = strategy_orders
             conversions += strategy_conversions
 
-        trader_data = ""
+            if isinstance(strategy, StatefulStrategy):
+                new_trader_data[symbol] = strategy.save()
+
+        trader_data = json.dumps(new_trader_data, separators=(",", ":"))
         logger.flush(state, orders, conversions, trader_data)
         return orders, conversions, trader_data
