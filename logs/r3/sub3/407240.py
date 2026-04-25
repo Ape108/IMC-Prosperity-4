@@ -262,6 +262,7 @@ class RollingZScoreStrategy(SignalStrategy, StatefulStrategy[dict[str, Any]]):
         SignalStrategy.load(self, data["signal"])
         self.history = data["history"]
 
+
 class MarketMakingStrategy(Strategy):
     @abstractmethod
     def get_true_value(self, state: TradingState) -> float:
@@ -277,12 +278,12 @@ class MarketMakingStrategy(Strategy):
         
         position = state.position.get(self.symbol, 0)
         
-        # --- THE FIX 1: Aggressive Quadratic Inventory Skew ---
-        inventory_ratio = position / self.limit
-        max_skew = 12.0  # Max price levels to adjust when at 100% capacity
-        
-        # Quadratic curve: tight at low inventory, aggressive at high inventory
-        skew = math.copysign((abs(inventory_ratio) ** 2) * max_skew, inventory_ratio)
+        # --- THE FIX: Inventory Skew ---
+        # Adjust the true value based on current inventory.
+        # If long (position > 0), skew lowers the true value to encourage selling.
+        # If short (position < 0), skew raises the true value to encourage buying.
+        skew_factor = 2.0  # Increase this to widen quotes more aggressively when holding inventory
+        skew = (position / self.limit) * skew_factor
         skewed_true_value = true_value - skew
         
         to_buy = self.limit - position
@@ -418,6 +419,11 @@ class VoucherStrategy(Strategy):
 # ── Delta-1 products ─────────────────────────────────────────────────────────
 
 class HydrogelStrategy(MarketMakingStrategy):
+    """
+        Notes:
+        - Replaced hardcoded 10k peg with an Order Book Imbalance (Microprice) calculation.
+        - Dynamically tracks true value using top-of-book volume weights to predict short-term momentum.
+    """
     def get_true_value(self, state: TradingState) -> float:
         od = state.order_depths.get(self.symbol)
         
@@ -425,23 +431,22 @@ class HydrogelStrategy(MarketMakingStrategy):
         if not od or not od.buy_orders or not od.sell_orders:
             return self.get_mid_price(state, self.symbol)
         
-        buy_orders = sorted(od.buy_orders.items(), reverse=True)
-        sell_orders = sorted(od.sell_orders.items())
+        # Get top of book (best bid and best ask)
+        best_bid = max(od.buy_orders.keys())
+        best_ask = min(od.sell_orders.keys())
         
-        best_bid = buy_orders[0][0]
-        best_ask = sell_orders[0][0]
-        
-        # --- THE FIX 2: Deep Book Volume Aggregation ---
-        # Look at up to the top 3 levels to gauge true liquidity pressure
-        depth = 3
-        bid_vol = sum(vol for price, vol in buy_orders[:depth])
-        ask_vol = sum(abs(vol) for price, vol in sell_orders[:depth])
+        # In the Prosperity engine, sell volumes are negative integers. We need absolute values.
+        bid_vol = od.buy_orders[best_bid]
+        ask_vol = abs(od.sell_orders[best_ask])
         
         total_vol = bid_vol + ask_vol
         if total_vol == 0:
             return (best_bid + best_ask) / 2.0
             
-        # Cross-weight the top-of-book prices by the deep-book volume
+        # The Microprice formula:
+        # Cross-weights the price by the opposite volume.
+        # Heavy buy volume pulls the true value closer to the ask.
+        # Heavy sell volume pulls the true value closer to the bid.
         micro_price = (best_bid * ask_vol + best_ask * bid_vol) / total_vol
         
         return micro_price

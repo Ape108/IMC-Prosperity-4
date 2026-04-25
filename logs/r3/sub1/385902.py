@@ -262,6 +262,7 @@ class RollingZScoreStrategy(SignalStrategy, StatefulStrategy[dict[str, Any]]):
         SignalStrategy.load(self, data["signal"])
         self.history = data["history"]
 
+
 class MarketMakingStrategy(Strategy):
     @abstractmethod
     def get_true_value(self, state: TradingState) -> float:
@@ -270,51 +271,34 @@ class MarketMakingStrategy(Strategy):
     def act(self, state: TradingState) -> None:
         true_value = self.get_true_value(state)
         od = state.order_depths[self.symbol]
-        
-        # Sort asks (sell orders) lowest to highest, bids (buy orders) highest to lowest
         buy_orders = sorted(od.buy_orders.items(), reverse=True)
         sell_orders = sorted(od.sell_orders.items())
-        
         position = state.position.get(self.symbol, 0)
-        
-        # --- THE FIX 1: Aggressive Quadratic Inventory Skew ---
-        inventory_ratio = position / self.limit
-        max_skew = 12.0  # Max price levels to adjust when at 100% capacity
-        
-        # Quadratic curve: tight at low inventory, aggressive at high inventory
-        skew = math.copysign((abs(inventory_ratio) ** 2) * max_skew, inventory_ratio)
-        skewed_true_value = true_value - skew
-        
         to_buy = self.limit - position
         to_sell = self.limit + position
-        
-        # Calculate quoting prices using the skewed value
-        max_buy_price = int(skewed_true_value) - 1 if skewed_true_value % 1 == 0 else floor(skewed_true_value)
-        min_sell_price = int(skewed_true_value) + 1 if skewed_true_value % 1 == 0 else ceil(skewed_true_value)
+        max_buy_price = int(true_value) - 1 if true_value % 1 == 0 else floor(true_value)
+        min_sell_price = int(true_value) + 1 if true_value % 1 == 0 else ceil(true_value)
 
-        # 1. Take liquidity if available at favorable prices (Buy)
         for price, volume in sell_orders:
             if to_buy > 0 and price <= max_buy_price:
                 qty = min(to_buy, -volume)
                 self.buy(price, qty)
                 to_buy -= qty
 
-        # 2. Provide liquidity for remaining buy limit
         if to_buy > 0:
             price = next((p + 1 for p, _ in buy_orders if p < max_buy_price), max_buy_price)
             self.buy(price, to_buy)
 
-        # 3. Take liquidity if available at favorable prices (Sell)
         for price, volume in buy_orders:
             if to_sell > 0 and price >= min_sell_price:
                 qty = min(to_sell, volume)
                 self.sell(price, qty)
                 to_sell -= qty
 
-        # 4. Provide liquidity for remaining sell limit
         if to_sell > 0:
             price = next((p - 1 for p, _ in sell_orders if p > min_sell_price), min_sell_price)
             self.sell(price, to_sell)
+
 
 # ── Voucher constants ────────────────────────────────────────────────────────
 
@@ -333,18 +317,7 @@ class VoucherStrategy(Strategy):
         -
 
         Results:
-            Backtest:
-            - 4000 strike has 0 pnl
-            - 4500 strike has 0 pnl
-            - 5000 strike has -114 to 162 pnl
-            - 5100 strike has 6 to 49 pnl
-            - 5200 strike has -106 to 1 pnl
-            - 5300 strike has -563 to -13 pnl
-            - 5400 strike has -3 to 0 pnl
-            - 5500 strike has 0 pnl
-            - 6000 strike has 0 pnl
-            - 6500 strike has 0 pnl
-        
+        - 
     """
     def __init__(self, symbol: str, 
                  limit: int, strike: int, k: float = 300.0, min_residual: float = 0.01, max_otm_moneyness: float = 1.020) -> None:
@@ -418,33 +391,21 @@ class VoucherStrategy(Strategy):
 # ── Delta-1 products ─────────────────────────────────────────────────────────
 
 class HydrogelStrategy(MarketMakingStrategy):
+    """
+        Notes:
+        -
+
+        Results:
+        - 
+    """
     def get_true_value(self, state: TradingState) -> float:
-        od = state.order_depths.get(self.symbol)
-        
-        # Fallback to standard mid-price if the order book is unexpectedly empty
-        if not od or not od.buy_orders or not od.sell_orders:
-            return self.get_mid_price(state, self.symbol)
-        
-        buy_orders = sorted(od.buy_orders.items(), reverse=True)
-        sell_orders = sorted(od.sell_orders.items())
-        
-        best_bid = buy_orders[0][0]
-        best_ask = sell_orders[0][0]
-        
-        # --- THE FIX 2: Deep Book Volume Aggregation ---
-        # Look at up to the top 3 levels to gauge true liquidity pressure
-        depth = 3
-        bid_vol = sum(vol for price, vol in buy_orders[:depth])
-        ask_vol = sum(abs(vol) for price, vol in sell_orders[:depth])
-        
-        total_vol = bid_vol + ask_vol
-        if total_vol == 0:
-            return (best_bid + best_ask) / 2.0
-            
-        # Cross-weight the top-of-book prices by the deep-book volume
-        micro_price = (best_bid * ask_vol + best_ask * bid_vol) / total_vol
-        
-        return micro_price
+        expected_true_value = 10_000
+        max_delta = 5
+        mid_price = self.get_mid_price(state, self.symbol)
+        if (expected_true_value - max_delta) <= mid_price <= (expected_true_value + max_delta):
+            return expected_true_value
+        return mid_price
+
 
 class VelvetfruitStrategy(RollingZScoreStrategy):
     """
@@ -452,7 +413,7 @@ class VelvetfruitStrategy(RollingZScoreStrategy):
         -
 
         Results:
-        - 0 pnl in backtest
+        - 
     """
     def __init__(self, symbol: Symbol, limit: int) -> None:
         super().__init__(symbol, limit, zscore_period=75, smoothing_period=100, threshold=0.5)
@@ -479,7 +440,7 @@ class Trader:
 
         self.strategies: dict[Symbol, Strategy] = {
             "HYDROGEL_PACK": HydrogelStrategy("HYDROGEL_PACK", limits["HYDROGEL_PACK"]),
-            "VELVETFRUIT_EXTRACT": HydrogelStrategy("VELVETFRUIT_EXTRACT", limits["VELVETFRUIT_EXTRACT"]),
+            "VELVETFRUIT_EXTRACT": VelvetfruitStrategy("VELVETFRUIT_EXTRACT", limits["VELVETFRUIT_EXTRACT"]),
             # Iterates over each voucher and creates a strategy for it with the appropriate strike
             **{
                 f"VEV_{strike}": VoucherStrategy(f"VEV_{strike}", limits[f"VEV_{strike}"], strike)
