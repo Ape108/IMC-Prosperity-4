@@ -66,6 +66,13 @@ def fit_iv_smile(moneynesses: list[float], ivs: list[float]) -> np.ndarray | Non
     return np.polyfit(moneynesses, ivs, 2)
 
 
+def autocorr_1lag(series: list[float]) -> float:
+    if len(series) < 2:
+        return 0.0
+    r = np.corrcoef(series[:-1], series[1:])[0, 1]
+    return float(r) if not math.isnan(r) else 0.0
+
+
 # ── Logger ───────────────────────────────────────────────────────────────────
 
 class Logger:
@@ -307,7 +314,7 @@ MAX_CLIP = 40
 STRIKES = [4000, 4500, 5000, 5100, 5200, 5300, 5400, 5500, 6000, 6500]
 VOUCHER_SYMBOLS = [f"VEV_{k}" for k in STRIKES]
 VEV_SPOT = "VELVETFRUIT_EXTRACT"
-ROUND_START_TTE_DAYS = 5.0
+ROUND_START_TTE_DAYS = 4.0
 TICKS_PER_DAY = 1_000_000
 
 
@@ -317,7 +324,8 @@ class VoucherStrategy(StatefulStrategy[dict[str, Any]]):
     def __init__(self, symbol: str,
                  limit: int, strike: int, k: float = 300.0, min_residual: float = 0.01,
                  max_otm_moneyness: float = 1.020,
-                 carry_window: int = 100, carry_threshold: float = 0.020) -> None:
+                 carry_window: int = 100, carry_threshold: float = 0.020,
+                 autocorr_window: int = 30, autocorr_threshold: float = -0.05) -> None:
         super().__init__(symbol, limit)
         self.strike = strike
         self.k = k
@@ -325,6 +333,8 @@ class VoucherStrategy(StatefulStrategy[dict[str, Any]]):
         self.max_otm_moneyness = max_otm_moneyness
         self.carry_window = carry_window
         self.carry_threshold = carry_threshold
+        self.autocorr_window = autocorr_window
+        self.autocorr_threshold = autocorr_threshold
         self.residual_history: list[float] = []
 
     def _apply_carry(self, scalper_target: int) -> int:
@@ -394,6 +404,10 @@ class VoucherStrategy(StatefulStrategy[dict[str, Any]]):
             self.residual_history.pop(0)
 
         if abs(residual) < self.min_residual:
+            return
+        if len(self.residual_history) < self.autocorr_window:
+            return
+        if autocorr_1lag(self.residual_history[-self.autocorr_window:]) >= self.autocorr_threshold:
             return
         position = state.position.get(self.symbol, 0)
         scalper_target = int(np.clip(-self.k * residual, -self.limit, self.limit))
@@ -506,6 +520,7 @@ class Trader:
                     f"VEV_{strike}", limits[f"VEV_{strike}"], strike,
                     k=150, min_residual=0.01, max_otm_moneyness=0.996,
                     carry_window=100, carry_threshold=0.020,
+                    autocorr_window=30, autocorr_threshold=-0.05,
                 )
                 for strike in STRIKES
             },
