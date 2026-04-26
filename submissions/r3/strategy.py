@@ -1,188 +1,21 @@
 import json
 import math
-from abc import abstractmethod
-from enum import IntEnum
-from math import ceil, floor
 from typing import Any
-
 import numpy as np
-import pandas as pd
+
 from datamodel import Listing, Observation, Order, OrderDepth, ProsperityEncoder, Symbol, Trade, TradingState
 
 type JSON = dict[str, Any] | list[Any] | str | int | float | bool | None
 
-# ── Black-Scholes math ───────────────────────────────────────────────────────
+# ── Black-Scholes Math (Optimized) ───────────────────────────────────────────
 
 def norm_cdf(x: float) -> float:
     return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
 
-def bs_call_price(S: float, K: float, T: float, sigma: float) -> float:
-    if T <= 0 or sigma <= 0:
-        return max(0.0, S - K)
-    sqrt_T = math.sqrt(T)
-    d1 = (math.log(S / K) + 0.5 * sigma ** 2 * T) / (sigma * sqrt_T)
-    d2 = d1 - sigma * sqrt_T
-    return S * norm_cdf(d1) - K * norm_cdf(d2)
-
 def bs_call_delta(S: float, K: float, T: float, sigma: float) -> float:
-    if T <= 0 or sigma <= 0:
-        return 1.0 if S > K else 0.0
-    sqrt_T = math.sqrt(T)
-    d1 = (math.log(S / K) + 0.5 * sigma ** 2 * T) / (sigma * sqrt_T)
+    if T <= 0 or sigma <= 0: return 1.0 if S > K else 0.0
+    d1 = (math.log(S / K) + 0.5 * sigma ** 2 * T) / (sigma * math.sqrt(T))
     return norm_cdf(d1)
-
-def vega(S: float, K: float, T: float, sigma: float) -> float:
-    if T <= 0 or sigma <= 0:
-        return 0.0
-    sqrt_T = math.sqrt(T)
-    d1 = (math.log(S / K) + 0.5 * sigma ** 2 * T) / (sigma * sqrt_T)
-    pdf_d1 = math.exp(-0.5 * d1 ** 2) / math.sqrt(2.0 * math.pi)
-    return S * sqrt_T * pdf_d1
-
-def standard_normal_pdf(x: float) -> float:
-    return math.exp(-0.5 * x ** 2) / math.sqrt(2.0 * math.pi)
-
-def bs_gamma(S: float, K: float, T: float, sigma: float) -> float:
-    if T <= 0 or sigma <= 0:
-        return 0.0
-    sqrt_T = math.sqrt(T)
-    d1 = (math.log(S / K) + 0.5 * sigma ** 2 * T) / (sigma * sqrt_T)
-    return standard_normal_pdf(d1) / (S * sigma * sqrt_T)
-
-def implied_vol(S: float, K: float, T: float, market_price: float, max_iter: int = 100) -> float | None:
-    intrinsic = max(0.0, S - K)
-    if market_price <= intrinsic + 1e-6:
-        return None
-
-    sigma = 0.5
-    for _ in range(max_iter):
-        price = bs_call_price(S, K, T, sigma)
-        diff = price - market_price
-        if abs(diff) < 1e-6:
-            return sigma
-        v = vega(S, K, T, sigma)
-        if v < 1e-10:
-            return None
-        sigma -= diff / v
-        if sigma <= 0:
-            sigma = 1e-6
-    return sigma
-
-# ── Logger ───────────────────────────────────────────────────────────────────
-
-class Logger:
-    def __init__(self) -> None:
-        self.logs = ""
-        self.max_log_length = 3750
-
-    def print(self, *objects: Any, sep: str = " ", end: str = "\n") -> None:
-        self.logs += sep.join(map(str, objects)) + end
-
-    def flush(self, state: TradingState, orders: dict[Symbol, list[Order]], conversions: int, trader_data: str) -> None:
-        base_length = len(self.to_json([
-            self.compress_state(state, ""),
-            self.compress_orders(orders),
-            conversions, "", "",
-        ]))
-        max_item_length = (self.max_log_length - base_length) // 3
-        print(self.to_json([
-            self.compress_state(state, self.truncate(state.traderData, max_item_length)),
-            self.compress_orders(orders),
-            conversions,
-            self.truncate(trader_data, max_item_length),
-            self.truncate(self.logs, max_item_length),
-        ]))
-        self.logs = ""
-
-    def compress_state(self, state: TradingState, trader_data: str) -> list[Any]:
-        return [
-            state.timestamp, trader_data,
-            self.compress_listings(state.listings),
-            self.compress_order_depths(state.order_depths),
-            [], [], state.position,
-            self.compress_observations(state.observations),
-        ]
-
-    def compress_listings(self, listings: dict[Symbol, Listing]) -> list[list[Any]]:
-        return [[l.symbol, l.product, l.denomination] for l in listings.values()]
-
-    def compress_order_depths(self, order_depths: dict[Symbol, OrderDepth]) -> dict[Symbol, list[Any]]:
-        return {sym: [od.buy_orders, od.sell_orders] for sym, od in order_depths.items()}
-
-    def compress_observations(self, observations: Observation) -> list[Any]:
-        return [observations.plainValueObservations, {}]
-
-    def compress_orders(self, orders: dict[Symbol, list[Order]]) -> list[list[Any]]:
-        return [[o.symbol, o.price, o.quantity] for arr in orders.values() for o in arr]
-
-    def to_json(self, value: Any) -> str:
-        return json.dumps(value, cls=ProsperityEncoder, separators=(",", ":"))
-
-    def truncate(self, value: str, max_length: int) -> str:
-        lo, hi = 0, min(len(value), max_length)
-        out = ""
-        while lo <= hi:
-            mid = (lo + hi) // 2
-            candidate = value[:mid]
-            if len(candidate) < len(value):
-                candidate += "..."
-            if len(json.dumps(candidate)) <= max_length:
-                out = candidate
-                lo = mid + 1
-            else:
-                hi = mid - 1
-        return out
-
-logger = Logger()
-
-# ── Strategy base classes ────────────────────────────────────────────────────
-
-class Strategy[T: JSON]:
-    def __init__(self, symbol: str, limit: int) -> None:
-        self.symbol = symbol
-        self.limit = limit
-        self.orders: list[Order] = []
-
-    @abstractmethod
-    def act(self, state: TradingState, **kwargs) -> None:
-        raise NotImplementedError()
-
-    def get_required_symbols(self) -> list[Symbol]:
-        return [self.symbol]
-
-    def run(self, state: TradingState, **kwargs) -> tuple[list[Order], int]:
-        self.orders = []
-        self.conversions = 0
-        if all(
-            sym in state.order_depths
-            and len(state.order_depths[sym].buy_orders) > 0
-            and len(state.order_depths[sym].sell_orders) > 0
-            for sym in self.get_required_symbols()
-        ):
-            self.act(state, **kwargs)
-        return self.orders, self.conversions
-
-    def buy(self, price: int, quantity: int) -> None:
-        self.orders.append(Order(self.symbol, price, quantity))
-
-    def sell(self, price: int, quantity: int) -> None:
-        self.orders.append(Order(self.symbol, price, -quantity))
-
-    def get_mid_price(self, state: TradingState, symbol: str) -> float:
-        od = state.order_depths[symbol]
-        popular_buy = max(od.buy_orders.items(), key=lambda t: t[1])[0]
-        popular_sell = min(od.sell_orders.items(), key=lambda t: t[1])[0]
-        return (popular_buy + popular_sell) / 2.0
-
-
-class StatefulStrategy[T: JSON](Strategy):
-    @abstractmethod
-    def save(self) -> T:
-        raise NotImplementedError()
-
-    @abstractmethod
-    def load(self, data: T) -> None:
-        raise NotImplementedError()
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
@@ -191,287 +24,7 @@ VOUCHER_SYMBOLS = [f"VEV_{k}" for k in STRIKES]
 VEV_SPOT = "VELVETFRUIT_EXTRACT"
 ROUND_START_TTE_DAYS = 5.0
 TICKS_PER_DAY = 1_000_000
-
-# ── 1. VEV Options: Maker-Style Volatility Arbitrage ─────────────────────────
-
-class VoucherStrategy(Strategy):
-    def __init__(self, symbol: str, limit: int, strike: int, max_otm_moneyness: float = 1.050) -> None:
-        super().__init__(symbol, limit)
-        self.strike = strike
-        self.max_otm_moneyness = max_otm_moneyness
-        self.fitted_iv: float | None = None  
-
-    def get_required_symbols(self) -> list[Symbol]:
-        return [VEV_SPOT, self.symbol]
-
-    def act(self, state: TradingState, **kwargs) -> None:
-        if self.fitted_iv is None:
-            return  
-            
-        spot = self.get_mid_price(state, VEV_SPOT)
-        
-        if self.strike / spot > self.max_otm_moneyness: 
-            return
-
-        tte_days = ROUND_START_TTE_DAYS - state.timestamp / TICKS_PER_DAY
-        tte_years = max(tte_days, 0.001) / 365.0
-
-        theo_price = bs_call_price(spot, float(self.strike), tte_years, self.fitted_iv)
-        o_vega = vega(spot, float(self.strike), tte_years, self.fitted_iv)
-        o_gamma = bs_gamma(spot, float(self.strike), tte_years, self.fitted_iv)
-        
-        position = state.position.get(self.symbol, 0)
-        inventory_ratio = position / self.limit
-
-        od = state.order_depths[self.symbol]
-        buy_orders = sorted(od.buy_orders.items(), reverse=True)
-        sell_orders = sorted(od.sell_orders.items())
-        
-        best_bid = buy_orders[0][0] if buy_orders else theo_price - 1
-        best_ask = sell_orders[0][0] if sell_orders else theo_price + 1
-        spread = max(1.0, float(best_ask - best_bid))
-
-        to_buy = self.limit - position
-        to_sell = self.limit + position
-        MAX_CLIP = 50
-
-        # --- UPDATED: DYNAMIC VOLATILITY ARBITRAGE (TAKER) ---
-        # Edge is now a function of current market spread, preventing overtrading in high vol.
-        arbitrage_edge = max(1.0, spread * 0.45) 
-
-        for price, volume in sell_orders:
-            if to_buy > 0 and price < theo_price - arbitrage_edge:  
-                qty = min(to_buy, abs(volume), MAX_CLIP)
-                self.buy(price, qty)
-                to_buy -= qty
-
-        for price, volume in buy_orders:
-            if to_sell > 0 and price > theo_price + arbitrage_edge:  
-                qty = min(to_sell, abs(volume), MAX_CLIP)
-                self.sell(price, qty)
-                to_sell -= qty
-
-        # --- UPDATED: PASSIVE LIQUIDITY PROVISION (MAKER) ---
-        gamma_penalty = o_gamma * 300.0
-        vega_expansion = o_vega * 0.03
-        tte_penalty = 1.0 if tte_days < 0.5 else 0.0
-
-        # Replaced cubic trap with responsive linear skew + small quadratic accelerator
-        skew = (inventory_ratio * 3.5) + (np.sign(inventory_ratio) * (inventory_ratio ** 2) * 1.5)
-        skewed_theo = theo_price - skew
-        
-        dynamic_width = 1.0 + vega_expansion + gamma_penalty + tte_penalty + (abs(inventory_ratio) * 1.5)
-        
-        bid_price = floor(skewed_theo - dynamic_width)
-        ask_price = ceil(skewed_theo + dynamic_width)
-        
-        intrinsic = max(0.0, spot - self.strike)
-        bid_price = max(bid_price, floor(intrinsic))
-        ask_price = max(ask_price, bid_price + 1)
-
-        if to_buy > 0: self.buy(int(bid_price), min(to_buy, MAX_CLIP))
-        if to_sell > 0: self.sell(int(ask_price), min(to_sell, MAX_CLIP))
-
-    def get_current_delta(self, state: TradingState) -> float:
-        position = state.position.get(self.symbol, 0)
-        if position == 0: return 0.0
-        
-        spot = self.get_mid_price(state, VEV_SPOT)
-        tte_days = ROUND_START_TTE_DAYS - state.timestamp / TICKS_PER_DAY
-        tte_years = max(tte_days, 0.001) / 365.0
-        
-        iv = self.fitted_iv if self.fitted_iv is not None else 0.5
-        return position * bs_call_delta(spot, float(self.strike), tte_years, iv)
-
-# ── 2. Velvetfruit: Hedged Stat-Arb Composite ────────────────────────────────
-
-class HedgedVelvetfruitStrategy(StatefulStrategy[dict[str, Any]]):
-    def __init__(self, symbol: Symbol, limit: int) -> None:
-        super().__init__(symbol, limit)
-        self.zscore_period = 75
-        self.smoothing_period = 100
-        self.history: list[float] = []
-
-    def get_microprice(self, state: TradingState) -> float:
-        od = state.order_depths[self.symbol]
-        best_bid = max(od.buy_orders.keys())
-        best_ask = min(od.sell_orders.keys())
-        bid_vol = od.buy_orders[best_bid]
-        ask_vol = abs(od.sell_orders[best_ask])
-        total_vol = bid_vol + ask_vol
-        return (best_bid * ask_vol + best_ask * bid_vol) / total_vol if total_vol > 0 else (best_bid + best_ask) / 2.0
-
-    def get_stat_arb_target(self, state: TradingState) -> int:
-        od = state.order_depths[self.symbol]
-        mid = self.get_mid_price(state, self.symbol)
-        
-        # --- UPDATED: DEPTH-WEIGHTED OBI ---
-        weighted_bid_vol = 0.0
-        for price, vol in od.buy_orders.items():
-            dist = max(0.5, mid - price)
-            weighted_bid_vol += vol / (dist ** 1.5)
-            
-        weighted_ask_vol = 0.0
-        for price, vol in od.sell_orders.items():
-            dist = max(0.5, price - mid)
-            weighted_ask_vol += abs(vol) / (dist ** 1.5)
-            
-        total_weighted = weighted_bid_vol + weighted_ask_vol
-        obi = (weighted_bid_vol - weighted_ask_vol) / total_weighted if total_weighted > 0 else 0.0
-        obi_target = int(obi * 90) 
-
-        self.history.append(mid)
-
-        required = self.zscore_period + self.smoothing_period
-        if len(self.history) > required:
-            self.history.pop(0)
-            
-        z_target = 0
-        if len(self.history) >= required:
-            hist = pd.Series(self.history)
-            score = (
-                ((hist - hist.rolling(self.zscore_period).mean()) / hist.rolling(self.zscore_period).std())
-                .rolling(self.smoothing_period)
-                .mean()
-                .iloc[-1]
-            )
-            if not pd.isna(score):
-                z_target = int(-score * 60) 
-        
-        target = z_target + obi_target
-        return max(-100, min(100, target))
-
-    def act_hedged(self, state: TradingState, aggregate_delta: float) -> None:
-        self.orders = []
-        self.conversions = 0
-
-        if not (self.symbol in state.order_depths and state.order_depths[self.symbol].buy_orders):
-            return
-
-        true_value = self.get_microprice(state)
-        od = state.order_depths[self.symbol]
-        position = state.position.get(self.symbol, 0)
-        
-        hedge_target = -aggregate_delta
-        stat_arb_target = self.get_stat_arb_target(state)
-        
-        desired_position = np.clip(hedge_target + stat_arb_target, -self.limit, self.limit)
-        
-        inventory_error = position - desired_position
-        inventory_error_ratio = inventory_error / self.limit
-        
-        # Linear + Quadratic skew to fight inventory buildup immediately 
-        skew = (inventory_error_ratio * 4.0) + (np.sign(inventory_error_ratio) * (inventory_error_ratio ** 2) * 2.0)
-        skewed_true_value = true_value - skew
-        
-        dynamic_width = 1.0 + (abs(inventory_error_ratio) * 2.5)
-        
-        max_buy_price = floor(skewed_true_value - dynamic_width)
-        min_sell_price = ceil(skewed_true_value + dynamic_width)
-
-        MAX_CLIP = 40
-        to_buy = min(self.limit - position, MAX_CLIP)
-        to_sell = min(self.limit + position, MAX_CLIP)
-
-        buy_orders = sorted(od.buy_orders.items(), reverse=True)
-        sell_orders = sorted(od.sell_orders.items())
-
-        for price, volume in sell_orders:
-            if to_buy > 0 and price <= max_buy_price:
-                qty = min(to_buy, -volume)
-                self.buy(price, qty)
-                to_buy -= qty
-
-        for price, volume in buy_orders:
-            if to_sell > 0 and price >= min_sell_price:
-                qty = min(to_sell, volume)
-                self.sell(price, qty)
-                to_sell -= qty
-
-        if to_buy > 0:
-            price = next((p + 1 for p, _ in buy_orders if p < max_buy_price), max_buy_price)
-            self.buy(int(price), to_buy)
-
-        if to_sell > 0:
-            price = next((p - 1 for p, _ in sell_orders if p > min_sell_price), min_sell_price)
-            self.sell(int(price), to_sell)
-
-    def act(self, state: TradingState, **kwargs) -> None:
-        pass 
-
-    def save(self) -> dict[str, Any]:
-        return {"history": self.history}
-
-    def load(self, data: dict[str, Any]) -> None:
-        self.history = data.get("history", [])
-
-# ── 3. Hydrogel: Anchored Microprice Maker (Now with Cross-Asset Signal) ─────
-
-class HydrogelStrategy(Strategy):
-    def get_anchored_microprice(self, state: TradingState, cross_asset_signal: float) -> float:
-        od = state.order_depths[self.symbol]
-        if not od.buy_orders or not od.sell_orders:
-            return 10000.0
-
-        best_bid = max(od.buy_orders.keys())
-        best_ask = min(od.sell_orders.keys())
-        bid_vol = od.buy_orders[best_bid]
-        ask_vol = abs(od.sell_orders[best_ask])
-        total_vol = bid_vol + ask_vol
-        
-        microprice = (best_bid * ask_vol + best_ask * bid_vol) / total_vol if total_vol > 0 else (best_bid + best_ask) / 2.0
-        
-        # --- UPDATED: LEAD-LAG COINTEGRATION ---
-        # Instead of static 10000.0, adjust our anchor based on Velvetfruit momentum
-        beta = 1.25 # Historical relationship scaling factor
-        dynamic_anchor = 10000.0 + (cross_asset_signal * beta)
-        
-        return 0.85 * microprice + 0.15 * dynamic_anchor
-
-    def act(self, state: TradingState, **kwargs) -> None:
-        cross_asset_signal = kwargs.get("cross_asset_signal", 0.0)
-        
-        od = state.order_depths[self.symbol]
-        if not od.buy_orders or not od.sell_orders:
-            return
-
-        true_value = self.get_anchored_microprice(state, cross_asset_signal)
-        position = state.position.get(self.symbol, 0)
-        inventory_ratio = position / self.limit
-        
-        # Replaced cubic trap with responsive linear skew
-        skew = inventory_ratio * 10.0 
-        skewed_true_value = true_value - skew
-        
-        dynamic_width = 1.5 + (abs(inventory_ratio) * 3.5)
-        
-        max_buy_price = floor(skewed_true_value - dynamic_width)
-        min_sell_price = ceil(skewed_true_value + dynamic_width)
-
-        MAX_CLIP = 40
-        to_buy = min(self.limit - position, MAX_CLIP)
-        to_sell = min(self.limit + position, MAX_CLIP)
-
-        sell_orders = sorted(od.sell_orders.items())
-        for price, volume in sell_orders:
-            if to_buy > 0 and price <= max_buy_price:
-                qty = min(to_buy, -volume)
-                self.buy(price, qty)
-                to_buy -= qty
-
-        buy_orders = sorted(od.buy_orders.items(), reverse=True)
-        for price, volume in buy_orders:
-            if to_sell > 0 and price >= min_sell_price:
-                qty = min(to_sell, volume)
-                self.sell(price, qty)
-                to_sell -= qty
-
-        if to_buy > 0:
-            price = next((p + 1 for p, _ in buy_orders if p < max_buy_price), max_buy_price)
-            self.buy(int(price), to_buy)
-        if to_sell > 0:
-            price = next((p - 1 for p, _ in sell_orders if p > min_sell_price), min_sell_price)
-            self.sell(int(price), to_sell)
+MAX_CLIP = 40
 
 # ── Trader Architecture ──────────────────────────────────────────────────────
 
@@ -482,130 +35,124 @@ class Trader:
             "VELVETFRUIT_EXTRACT": 200,
             **{f"VEV_{s}": 300 for s in STRIKES}
         }
-
-        self.strategies: dict[Symbol, Strategy] = {
-            "HYDROGEL_PACK": HydrogelStrategy("HYDROGEL_PACK", self.limits["HYDROGEL_PACK"]),
-            "VELVETFRUIT_EXTRACT": HedgedVelvetfruitStrategy("VELVETFRUIT_EXTRACT", self.limits["VELVETFRUIT_EXTRACT"]),
-            **{
-                f"VEV_{s}": VoucherStrategy(f"VEV_{s}", self.limits[f"VEV_{s}"], s)
-                for s in STRIKES
-            },
-        }
+    
+    def get_mid(self, state: TradingState, symbol: str) -> float | None:
+        od = state.order_depths.get(symbol)
+        if not od or not od.buy_orders or not od.sell_orders: return None
+        return (max(od.buy_orders.keys()) + min(od.sell_orders.keys())) / 2.0
 
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
-        orders: dict[Symbol, list[Order]] = {}
+        # Engine Compliance: Initialize the required return dictionary
+        orders: dict[Symbol, list[Order]] = {sym: [] for sym in self.limits.keys()}
         conversions = 0
+        trader_data = json.loads(state.traderData) if state.traderData else {}
+
+        vf_mid = self.get_mid(state, VEV_SPOT)
+        if not vf_mid:
+            # Safe exit if underlying order book is empty
+            return orders, conversions, json.dumps(trader_data)
+
+        tte_years = max((ROUND_START_TTE_DAYS - state.timestamp / TICKS_PER_DAY), 0.001) / 365.0
+
+        # =====================================================================
+        # PHASE 1: AGGREGATE DELTA ORDER BOOK IMBALANCE (AD-OBI)
+        # =====================================================================
+        aggregate_market_delta_demand = 0.0
         
-        old_data = json.loads(state.traderData) if state.traderData else {}
-        new_trader_data: dict[str, Any] = {}
+        for s, sym in zip(STRIKES, VOUCHER_SYMBOLS):
+            od = state.order_depths.get(sym)
+            if not od: continue
+            
+            # Rough delta estimate using a static vol (0.5) to weight the book
+            strike_delta = bs_call_delta(vf_mid, float(s), tte_years, 0.5)
+            
+            bid_vol = sum(od.buy_orders.values())
+            ask_vol = sum(abs(v) for v in od.sell_orders.values())
+            
+            # Net pressure on this specific strike
+            net_vol_pressure = bid_vol - ask_vol 
+            aggregate_market_delta_demand += (net_vol_pressure * strike_delta)
 
-        # ── Cross-Asset Momentum Tracker (Lead-Lag) ───────────────
-        vf_symbol = "VELVETFRUIT_EXTRACT"
-        vf_mid_history = old_data.get("vf_mid_history", [])
-        current_vf_momentum = 0.0
+        # =====================================================================
+        # PHASE 2: PREDATORY VELVETFRUIT FRONT-RUNNING
+        # =====================================================================
+        vf_od = state.order_depths[VEV_SPOT]
+        vf_pos = state.position.get(VEV_SPOT, 0)
         
-        od = state.order_depths.get(vf_symbol)
-        if od and od.buy_orders and od.sell_orders:
-            best_bid = max(od.buy_orders.keys())
-            best_ask = min(od.sell_orders.keys())
-            spot = (best_bid + best_ask) / 2.0
-            
-            vf_mid_history.append(spot)
-            if len(vf_mid_history) > 20:
-                vf_mid_history.pop(0)
-            
-            if len(vf_mid_history) >= 10:
-                # Simple momentum: current vs moving average of last 10 ticks
-                current_vf_momentum = spot - (sum(vf_mid_history[-10:]) / 10.0)
-                
-            new_trader_data["vf_mid_history"] = vf_mid_history
-
-        # ── PASS 0: Unfiltered Global IV Curve Fitting ─────────────
-        if od and od.buy_orders and od.sell_orders:
-            tte_days = ROUND_START_TTE_DAYS - state.timestamp / TICKS_PER_DAY
-            tte_years = max(tte_days, 0.001) / 365.0
-            
-            moneynesses, ivs, weights = [], [], []
-            for s, sym in zip(STRIKES, VOUCHER_SYMBOLS):
-                vod = state.order_depths.get(sym)
-                if not vod or not vod.buy_orders or not vod.sell_orders: continue
-                
-                vbid = max(vod.buy_orders.keys())
-                vask = min(vod.sell_orders.keys())
-                vmid = (vbid + vask) / 2.0
-                iv = implied_vol(spot, float(s), tte_years, vmid)
-                
-                if iv:
-                    v = vega(spot, float(s), tte_years, iv)
-                    if v > 1e-6:
-                        moneynesses.append(s / spot)
-                        ivs.append(iv)
-                        weights.append(v)
-            
-            if len(moneynesses) >= 3:
-                coeffs = np.polyfit(moneynesses, ivs, 2, w=weights)
-                for s, sym in zip(STRIKES, VOUCHER_SYMBOLS):
-                    strat = self.strategies[sym]
-                    if isinstance(strat, VoucherStrategy):
-                        strat.fitted_iv = float(np.polyval(coeffs, s / spot))
-            elif len(moneynesses) == 2:
-                coeffs = np.polyfit(moneynesses, ivs, 1, w=weights)
-                for s, sym in zip(STRIKES, VOUCHER_SYMBOLS):
-                    strat = self.strategies[sym]
-                    if isinstance(strat, VoucherStrategy):
-                        strat.fitted_iv = float(np.polyval(coeffs, s / spot))
-            elif len(moneynesses) == 1:
-                for sym in VOUCHER_SYMBOLS:
-                    strat = self.strategies[sym]
-                    if isinstance(strat, VoucherStrategy):
-                        strat.fitted_iv = ivs[0]
-            else:
-                for sym in VOUCHER_SYMBOLS:
-                    strat = self.strategies[sym]
-                    if isinstance(strat, VoucherStrategy):
-                        strat.fitted_iv = 0.5
-
-        # ── PASS 1: Execute Options & Aggregate Portfolio Delta ─────────────
-        total_options_delta = 0.0
-        for symbol in VOUCHER_SYMBOLS:
-            strat = self.strategies[symbol]
-            if isinstance(strat, StatefulStrategy) and symbol in old_data:
-                strat.load(old_data[symbol])
-            
-            strat_orders, _ = strat.run(state)
-            orders[symbol] = strat_orders
-            
-            if hasattr(strat, 'get_current_delta'):
-                total_options_delta += strat.get_current_delta(state)
-            
-            if isinstance(strat, StatefulStrategy):
-                new_trader_data[symbol] = strat.save()
-
-        # ── PASS 2: Execute Hedged Velvetfruit (Alpha + Hedge) ───────────────
-        vf_strat = self.strategies[vf_symbol]
-        if isinstance(vf_strat, HedgedVelvetfruitStrategy):
-            if vf_symbol in old_data:
-                vf_strat.load(old_data[vf_symbol])
-            
-            vf_strat.act_hedged(state, total_options_delta)
-            orders[vf_symbol] = vf_strat.orders
-            
-            if isinstance(vf_strat, StatefulStrategy):
-                new_trader_data[vf_symbol] = vf_strat.save()
-
-        # ── PASS 3: Execute Independent Market Making (Hydrogel) ─────────────
-        hg_symbol = "HYDROGEL_PACK"
-        hg_strat = self.strategies[hg_symbol]
-        if hg_symbol in old_data:
-            hg_strat.load(old_data[hg_symbol])
-            
-        hg_orders, hg_conv = hg_strat.run(state, cross_asset_signal=current_vf_momentum)
-        orders[hg_symbol] = hg_orders
-        conversions += hg_conv
+        # Predictive Target based on AD-OBI
+        predictive_target = np.clip(int(aggregate_market_delta_demand * 2.5), -self.limits[VEV_SPOT], self.limits[VEV_SPOT])
         
-        if isinstance(hg_strat, StatefulStrategy):
-            new_trader_data[hg_symbol] = hg_strat.save()
+        # Local Mean Reversion OBI
+        vf_bid_vol = sum(vf_od.buy_orders.values())
+        vf_ask_vol = sum(abs(v) for v in vf_od.sell_orders.values())
+        vf_obi = (vf_bid_vol - vf_ask_vol) / (vf_bid_vol + vf_ask_vol + 1)
+        local_obi_target = int(vf_obi * 50)
+        
+        final_vf_target = np.clip(predictive_target + local_obi_target, -self.limits[VEV_SPOT], self.limits[VEV_SPOT])
+        to_trade_vf = final_vf_target - vf_pos
 
-        traderData = json.dumps(new_trader_data, separators=(",", ":"))
-        logger.flush(state, orders, conversions, traderData)
-        return orders, conversions, traderData
+        # Aggressively cross the spread to front-run the AMM hedge
+        if to_trade_vf > 15: 
+            for price, vol in sorted(vf_od.sell_orders.items()):
+                if to_trade_vf <= 0: break
+                take = min(to_trade_vf, abs(vol))
+                orders[VEV_SPOT].append(Order(VEV_SPOT, price, take))
+                to_trade_vf -= take
+                
+        elif to_trade_vf < -15: 
+            for price, vol in sorted(vf_od.buy_orders.items(), reverse=True):
+                if to_trade_vf >= 0: break
+                take = min(abs(to_trade_vf), abs(vol))
+                orders[VEV_SPOT].append(Order(VEV_SPOT, price, -take))
+                to_trade_vf += take
+
+        # =====================================================================
+        # PHASE 3: HYDROGEL (Anchored Microprice Maker)
+        # =====================================================================
+        hg_od = state.order_depths.get("HYDROGEL_PACK")
+        if hg_od and hg_od.buy_orders and hg_od.sell_orders:
+            hg_mid = self.get_mid(state, "HYDROGEL_PACK")
+            hg_pos = state.position.get("HYDROGEL_PACK", 0)
+            
+            best_bid = max(hg_od.buy_orders.keys())
+            best_ask = min(hg_od.sell_orders.keys())
+            bid_vol = hg_od.buy_orders[best_bid]
+            ask_vol = abs(hg_od.sell_orders[best_ask])
+            total_vol = bid_vol + ask_vol
+            
+            microprice = (best_bid * ask_vol + best_ask * bid_vol) / total_vol if total_vol > 0 else hg_mid
+            true_value = 0.85 * microprice + 0.15 * 10000.0 # Restored 10k anchor
+            
+            # Aggressive Linear Avellaneda Skew
+            inventory_ratio = hg_pos / self.limits["HYDROGEL_PACK"]
+            skew = inventory_ratio * 10.0 
+            skewed_true_value = true_value - skew
+            dynamic_width = 1.5 + (abs(inventory_ratio) * 3.5)
+            
+            max_buy_price = math.floor(skewed_true_value - dynamic_width)
+            min_sell_price = math.ceil(skewed_true_value + dynamic_width)
+
+            to_buy_hg = min(self.limits["HYDROGEL_PACK"] - hg_pos, MAX_CLIP)
+            to_sell_hg = min(self.limits["HYDROGEL_PACK"] + hg_pos, MAX_CLIP)
+
+            for price, volume in sorted(hg_od.sell_orders.items()):
+                if to_buy_hg > 0 and price <= max_buy_price:
+                    qty = min(to_buy_hg, -volume)
+                    orders["HYDROGEL_PACK"].append(Order("HYDROGEL_PACK", price, qty))
+                    to_buy_hg -= qty
+
+            for price, volume in sorted(hg_od.buy_orders.items(), reverse=True):
+                if to_sell_hg > 0 and price >= min_sell_price:
+                    qty = min(to_sell_hg, volume)
+                    orders["HYDROGEL_PACK"].append(Order("HYDROGEL_PACK", price, -qty))
+                    to_sell_hg -= qty
+
+            if to_buy_hg > 0:
+                price = next((p + 1 for p, _ in sorted(hg_od.buy_orders.items(), reverse=True) if p < max_buy_price), max_buy_price)
+                orders["HYDROGEL_PACK"].append(Order("HYDROGEL_PACK", int(price), to_buy_hg))
+            if to_sell_hg > 0:
+                price = next((p - 1 for p, _ in sorted(hg_od.sell_orders.items()) if p > min_sell_price), min_sell_price)
+                orders["HYDROGEL_PACK"].append(Order("HYDROGEL_PACK", int(price), -to_sell_hg))
+
+        # Engine Compliance: Return strict tuple format
+        return orders, conversions, json.dumps(trader_data)
