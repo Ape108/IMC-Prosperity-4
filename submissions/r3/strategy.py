@@ -452,64 +452,8 @@ class HydrogelStrategy(MarketMakingStrategy):
 
 
 class VelvetfruitStrategy(MarketMakingStrategy):
-    # Required by MarketMakingStrategy ABC; act() overrides fully so this is not called at runtime.
     def get_true_value(self, state: TradingState) -> float:
         return self.get_mid_price(state, self.symbol)
-
-    def act(self, state: TradingState) -> None:
-        od = state.order_depths[self.symbol]
-        position = state.position.get(self.symbol, 0)
-
-        best_bid = max(od.buy_orders.keys())
-        best_ask = min(od.sell_orders.keys())
-        bid_vol = od.buy_orders[best_bid]
-        ask_vol = abs(od.sell_orders[best_ask])
-        total_vol = bid_vol + ask_vol
-
-        microprice = (
-            (best_bid * ask_vol + best_ask * bid_vol) / total_vol
-            if total_vol > 0
-            else (best_bid + best_ask) / 2.0
-        )
-        base_value = 0.90 * microprice + 0.10 * 5_250
-        inventory_ratio = position / self.limit
-        skewed_value = base_value - inventory_ratio * 5.0
-        dynamic_width = 0.5 + abs(inventory_ratio) * 1.5
-
-        max_buy_price = math.floor(skewed_value - dynamic_width)
-        min_sell_price = math.ceil(skewed_value + dynamic_width)
-
-        buy_orders = sorted(od.buy_orders.items(), reverse=True)
-        sell_orders = sorted(od.sell_orders.items())
-
-        to_buy = min(self.limit - position, MAX_CLIP)
-        to_sell = min(self.limit + position, MAX_CLIP)
-
-        for price, volume in sell_orders:
-            if to_buy > 0 and price <= max_buy_price:
-                qty = min(to_buy, -volume)
-                self.buy(price, qty)
-                to_buy -= qty
-
-        if to_buy > 0:
-            price = next(
-                (p + 1 for p, _ in buy_orders if p < max_buy_price),
-                max_buy_price,
-            )
-            self.buy(int(price), to_buy)
-
-        for price, volume in buy_orders:
-            if to_sell > 0 and price >= min_sell_price:
-                qty = min(to_sell, volume)
-                self.sell(price, qty)
-                to_sell -= qty
-
-        if to_sell > 0:
-            price = next(
-                (p - 1 for p, _ in sell_orders if p > min_sell_price),
-                min_sell_price,
-            )
-            self.sell(int(price), to_sell)
 
 
 # ── Trader ───────────────────────────────────────────────────────────────────
