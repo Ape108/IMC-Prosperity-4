@@ -313,20 +313,35 @@ TICKS_PER_DAY = 1_000_000
 
 # ── Voucher IV smile scalper ─────────────────────────────────────────────────
 
-class VoucherStrategy(Strategy):
-    """
-        Notes:
-        - 
-
-        Results:
-    """
-    def __init__(self, symbol: str, 
-                 limit: int, strike: int, k: float = 300.0, min_residual: float = 0.01, max_otm_moneyness: float = 1.020) -> None:
+class VoucherStrategy(StatefulStrategy[dict[str, Any]]):
+    def __init__(self, symbol: str,
+                 limit: int, strike: int, k: float = 300.0, min_residual: float = 0.01,
+                 max_otm_moneyness: float = 1.020,
+                 carry_window: int = 100, carry_threshold: float = 0.020) -> None:
         super().__init__(symbol, limit)
         self.strike = strike
         self.k = k
-        self.min_residual = min_residual      # dead-band: ignore small residuals
-        self.max_otm_moneyness = max_otm_moneyness  # skip far-OTM strikes (smile fit unreliable there)
+        self.min_residual = min_residual
+        self.max_otm_moneyness = max_otm_moneyness
+        self.carry_window = carry_window
+        self.carry_threshold = carry_threshold
+        self.residual_history: list[float] = []
+
+    def _apply_carry(self, scalper_target: int) -> int:
+        if len(self.residual_history) < self.carry_window:
+            return scalper_target
+        mean_residual = float(np.mean(self.residual_history))
+        if mean_residual > self.carry_threshold:
+            return min(scalper_target, 0)
+        if mean_residual < -self.carry_threshold:
+            return max(scalper_target, 0)
+        return scalper_target
+
+    def save(self) -> dict[str, Any]:
+        return {"residual_history": self.residual_history}
+
+    def load(self, data: dict[str, Any]) -> None:
+        self.residual_history = data.get("residual_history", [])
 
     def get_required_symbols(self) -> list[Symbol]:
         return [VEV_SPOT] + VOUCHER_SYMBOLS
@@ -372,10 +387,17 @@ class VoucherStrategy(Strategy):
 
         # high IV residual → option overpriced → sell (negative target)
         # low IV residual → option underpriced → buy (positive target)
+
+        # Update carry layer history (always, even if dead-band filters this tick)
+        self.residual_history.append(residual)
+        if len(self.residual_history) > self.carry_window:
+            self.residual_history.pop(0)
+
         if abs(residual) < self.min_residual:
             return
         position = state.position.get(self.symbol, 0)
-        target = int(np.clip(-self.k * residual, -self.limit, self.limit))
+        scalper_target = int(np.clip(-self.k * residual, -self.limit, self.limit))
+        target = self._apply_carry(scalper_target)
 
         if target > position:
             qty_needed = target - position
@@ -482,7 +504,8 @@ class Trader:
             **{
                 f"VEV_{strike}": VoucherStrategy(
                     f"VEV_{strike}", limits[f"VEV_{strike}"], strike,
-                    k=150, min_residual=0.01, max_otm_moneyness=1.005,
+                    k=150, min_residual=0.01, max_otm_moneyness=0.996,
+                    carry_window=100, carry_threshold=0.020,
                 )
                 for strike in STRIKES
             },
