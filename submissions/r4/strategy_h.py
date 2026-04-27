@@ -734,6 +734,88 @@ class Mark14InformedMMStrategy(StatefulStrategy[dict]):
         return bid_qty, ask_qty
 
 
+# ── VEV_4000 inside-spread MM ────────────────────────────────────────────────
+
+
+class Vev4000MMStrategy(Strategy):
+    """Stateless inside-spread market maker for VEV_4000.
+
+    Quotes are anchored to the observed touch (best_bid + offset / best_ask -
+    offset), not to a fair-value formula. Inventory protection is a three-region
+    state machine on the position:
+
+        |pos| <= band_inner           : quote both sides
+        band_inner < pos <= band_cap  : ask only (reduce long)
+        -band_cap <= pos < -band_inner: bid only (reduce short)
+        |pos| > band_cap              : no quotes
+
+    Per-side quantity = min(max_per_tick, remaining_band_capacity).
+
+    This is intentionally NOT Avellaneda-style: there is no risk-aversion
+    coefficient, no width function, no volatility input. The user vetoed
+    continuous inventory skew after prior submissions performed poorly with
+    that pattern (see cerebrum 2026-04-27).
+    """
+
+    def __init__(
+        self,
+        symbol: str,
+        limit: int,
+        offset: int = 5,
+        band_inner: int = 20,
+        band_cap: int = 30,
+        max_per_tick: int = 10,
+    ) -> None:
+        super().__init__(symbol, limit)
+        self.offset = offset
+        self.band_inner = band_inner
+        self.band_cap = band_cap
+        self.max_per_tick = max_per_tick
+
+    def _compute_sizes(self, position: int) -> tuple[int, int]:
+        """Return (bid_qty, ask_qty) for this tick given the current position."""
+        if abs(position) > self.band_cap:
+            return 0, 0
+
+        bid_qty = max(0, min(self.max_per_tick, self.band_cap - position))
+        ask_qty = max(0, min(self.max_per_tick, self.band_cap + position))
+
+        if position > self.band_inner:
+            bid_qty = 0
+        elif position < -self.band_inner:
+            ask_qty = 0
+
+        return bid_qty, ask_qty
+
+    def _compute_prices(self, od: OrderDepth) -> tuple[int, int]:
+        """Return (bid_price, ask_price) — inside-spread when the spread is
+        wide enough, at-touch otherwise. Never crosses.
+
+        Precondition: both sides of `od` are non-empty. The base
+        `Strategy.run()` guards this before calling `act()`.
+        """
+        best_bid = max(od.buy_orders.keys())
+        best_ask = min(od.sell_orders.keys())
+        spread = best_ask - best_bid
+        # Need `spread - 2*offset >= 1` for inside-spread quotes to leave at
+        # least one tick of gap between them.
+        if spread - 2 * self.offset >= 1:
+            return best_bid + self.offset, best_ask - self.offset
+        return best_bid, best_ask
+
+    def act(self, state: TradingState) -> None:
+        od = state.order_depths[self.symbol]
+        position = state.position.get(self.symbol, 0)
+
+        bid_price, ask_price = self._compute_prices(od)
+        bid_qty, ask_qty = self._compute_sizes(position)
+
+        if bid_qty > 0:
+            self.buy(bid_price, bid_qty)
+        if ask_qty > 0:
+            self.sell(ask_price, ask_qty)
+
+
 # ── Delta-1 products ─────────────────────────────────────────────────────────
 
 class HydrogelStrategy(MarketMakingStrategy):
@@ -849,6 +931,11 @@ class Trader:
 
         for strike in STRIKES:
             sym = f"VEV_{strike}"
+            if sym == "VEV_4000":
+                # Inside-spread MM with hard position bands. Wide-spread, deep-ITM
+                # call — see docs/superpowers/specs/2026-04-27-r4-vev4000-mm-design.md.
+                self.strategies[sym] = Vev4000MMStrategy(sym, limits[sym])
+                continue
             cfg = mark14_config.get(sym)
             if cfg is not None:
                 self.strategies[sym] = Mark14FollowerStrategy(
