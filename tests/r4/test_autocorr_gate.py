@@ -154,13 +154,13 @@ def test_gate_suppresses_orders_when_trending():
 # ── Trader instantiation ──────────────────────────────────────────────────────
 
 def test_all_vouchers_use_autocorr_params():
-    from strategy_h import Trader, STRIKES
+    from strategy_h import Trader, STRIKES, VoucherStrategy
     trader = Trader()
-    # VEV_5300 is now Mark14FollowerStrategy, not VoucherStrategy — skip it
+    # VEV_5300/5400/5500 are now Mark14FollowerStrategy, not VoucherStrategy — skip them
     for strike in STRIKES:
-        if strike == 5300:
-            continue
         sym = f"VEV_{strike}"
         s = trader.strategies[sym]
+        if not isinstance(s, VoucherStrategy):
+            continue
         assert s.autocorr_window == 30, f"{sym}: expected autocorr_window=30, got {s.autocorr_window}"
         assert s.autocorr_threshold == -0.05, f"{sym}: expected autocorr_threshold=-0.05, got {s.autocorr_threshold}"

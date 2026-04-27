@@ -337,6 +337,28 @@ MARK14_WINDOW_TICKS = 500
 # across all 3 days.
 MARK14_TARGET_SIZE = 100
 
+# ── Mark 14 Informed-MM bias constants ───────────────────────────────────────
+
+# Per-side lots posted each tick on VEV_5300/5400/5500. ~5 matches Mark 14's
+# typical trade clip; 10 sits naturally in queue without dwarfing it.
+MARK14_MM_QUOTE_SIZE = 10
+
+# Hard cap on per-tick fills per side. Prevents single sweep from blowing past
+# max_pos.
+MARK14_MM_MAX_CLIP = 15
+
+# Inventory skew constant (Hydrogel pattern: inv_skew = -(pos/limit) * inv_k).
+# Half of HydrogelStrategy's 10 — voucher books are thinner; start cautious.
+MARK14_MM_INV_K = 5.0
+
+# Spread asymmetry tilt magnitude (in ticks). When in window, the target side's
+# offset becomes (W - delta) and the away side's becomes (W + delta).
+MARK14_MM_DELTA = 1.0
+
+# Base symmetric half-width when out of window. With delta=1 and W=1, the
+# tightened side is at offset 0 (touch) and the loosened side at offset 2.
+MARK14_MM_W = 1.0
+
 
 # ── Voucher IV smile scalper ─────────────────────────────────────────────────
 
@@ -448,8 +470,31 @@ class VoucherStrategy(StatefulStrategy[dict[str, Any]]):
 # ── Mark 14 follower ─────────────────────────────────────────────────────────
 
 class Mark14FollowerStrategy(StatefulStrategy[dict]):
-    def __init__(self, symbol: str, limit: int) -> None:
+    """Mark 14 follower with direction-aware passive entry.
+
+    direction:
+        "follow_passive": when in window, post BUY at best_bid (our touch).
+                          No spread cross. Cancel-and-repost each tick.
+        "fade_at_touch":  when in window, post SELL at best_ask.
+
+    size: target |position| while in window.
+
+    Out-of-window: target = 0; reconcile passively (post at our touch).
+    Strikes absent from mark14_config fall through to VoucherStrategy.
+    """
+
+    def __init__(
+        self,
+        symbol: str,
+        limit: int,
+        direction: str = "follow_passive",
+        size: int = 75,
+    ) -> None:
         super().__init__(symbol, limit)
+        if direction not in ("follow_passive", "fade_at_touch"):
+            raise ValueError(f"unknown direction: {direction}")
+        self.direction = direction
+        self.size = size
         self.last_signal_ts: int | None = None
 
     def save(self) -> dict:
@@ -469,26 +514,224 @@ class Mark14FollowerStrategy(StatefulStrategy[dict]):
         if mark14_buy_ts:
             self.last_signal_ts = max(mark14_buy_ts)
 
-        # Compute target.
         in_window = (
             self.last_signal_ts is not None
             and state.timestamp - self.last_signal_ts <= MARK14_WINDOW_TICKS
         )
-        target = MARK14_TARGET_SIZE if in_window else 0
 
-        # Reconcile to target by crossing the spread.
+        if self.direction == "follow_passive":
+            target = self.size if in_window else 0
+        else:  # fade_at_touch
+            target = -self.size if in_window else 0
+
         position = state.position.get(self.symbol, 0)
         delta = target - position
+        # Clamp delta so the resulting position never exceeds [-limit, +limit].
+        delta = max(-self.limit - position, min(self.limit - position, delta))
         od = state.order_depths[self.symbol]
 
-        if delta > 0 and od.sell_orders:
-            best_ask = min(od.sell_orders.keys())
-            available = abs(od.sell_orders[best_ask])
-            self.buy(best_ask, min(delta, available))
-        elif delta < 0 and od.buy_orders:
+        if delta > 0:
             best_bid = max(od.buy_orders.keys())
-            available = od.buy_orders[best_bid]
-            self.sell(best_bid, min(-delta, available))
+            self.buy(best_bid, delta)
+        elif delta < 0:
+            best_ask = min(od.sell_orders.keys())
+            self.sell(best_ask, -delta)
+
+
+# ── Mark 14 Informed-MM bias ─────────────────────────────────────────────────
+
+
+class Mark14InformedMMStrategy(StatefulStrategy[dict]):
+    """Pure-passive market maker on illiquid OTM voucher strikes with quotes
+    biased by Mark 14 signal direction.
+
+    When in window (recent Mark 14 buy on this symbol), the bid/ask offsets
+    around fair value become asymmetric per the strike's predicted price
+    direction:
+      - predicted UP  (e.g. VEV_5300, lead-5 +0.225): tighten bid + loosen ask
+      - predicted DOWN (e.g. VEV_5400/5500, lead-5 < 0): tighten ask + loosen bid
+
+    Out of window: symmetric quotes.
+
+    Inventory skew (Hydrogel pattern) stacks on top: the fair value anchor
+    shifts opposite the position to drive unwind.
+
+    Never crosses the spread.
+    """
+
+    def __init__(
+        self,
+        symbol: str,
+        limit: int,
+        strike: int,
+        predicted_dir: str,
+        max_pos: int,
+        quote_size: int = MARK14_MM_QUOTE_SIZE,
+        max_clip: int = MARK14_MM_MAX_CLIP,
+        inv_k: float = MARK14_MM_INV_K,
+        delta: float = MARK14_MM_DELTA,
+        base_w: float = MARK14_MM_W,
+        window_ticks: int = MARK14_WINDOW_TICKS,
+    ) -> None:
+        super().__init__(symbol, limit)
+        if predicted_dir not in ("UP", "DOWN"):
+            raise ValueError(f"unknown predicted_dir: {predicted_dir}")
+        self.strike = strike
+        self.predicted_dir = predicted_dir
+        self.max_pos = max_pos
+        self.quote_size = quote_size
+        self.max_clip = max_clip
+        self.inv_k = inv_k
+        self.delta = delta
+        self.base_w = base_w
+        self.window_ticks = window_ticks
+        self.last_signal_ts: int | None = None
+
+    def get_required_symbols(self) -> list[Symbol]:
+        return [VEV_SPOT] + VOUCHER_SYMBOLS
+
+    def save(self) -> dict:
+        return {"last_signal_ts": self.last_signal_ts}
+
+    def load(self, data: dict) -> None:
+        self.last_signal_ts = data.get("last_signal_ts")
+
+    def act(self, state: TradingState) -> None:
+        # Day-boundary guard: timestamp resets each day → drop stale ts.
+        if self.last_signal_ts is not None and state.timestamp < self.last_signal_ts:
+            self.last_signal_ts = None
+
+        # Detect signal: scan market_trades for Mark 14 buys on this symbol.
+        trades = state.market_trades.get(self.symbol, [])
+        mark14_buy_ts = [t.timestamp for t in trades if t.buyer == MARK14_INFORMED_BOT]
+        if mark14_buy_ts:
+            self.last_signal_ts = max(mark14_buy_ts)
+
+        in_window = (
+            self.last_signal_ts is not None
+            and state.timestamp - self.last_signal_ts <= self.window_ticks
+        )
+
+        # Layer 1: fair value blend.
+        fair = self._compute_fair(state)
+        if fair is None:
+            return
+
+        # Layer 3: inventory skew on the anchor.
+        position = state.position.get(self.symbol, 0)
+        inv_skew = self._compute_inv_skew(position)
+        fair_used = fair + inv_skew
+
+        # Layer 4: spread asymmetry on the offsets.
+        bid_offset, ask_offset = self._compute_offsets(in_window)
+
+        # Layer 5: quote prices (with book clamp) + sizes (with cap).
+        od = state.order_depths[self.symbol]
+        bid_price, ask_price = self._compute_quote_prices(
+            od, fair_used, bid_offset, ask_offset,
+        )
+        bid_qty, ask_qty = self._compute_quote_sizes(position)
+
+        if bid_qty > 0:
+            self.buy(bid_price, bid_qty)
+        if ask_qty > 0:
+            self.sell(ask_price, ask_qty)
+
+    def _compute_offsets(self, in_window: bool) -> tuple[float, float]:
+        """Return (bid_offset, ask_offset). Out-of-window: symmetric.
+        In-window: tighten the side aligned with predicted direction, loosen
+        the other.
+
+        Predicted UP  → tighten BID (raise it, more competitive on buy side).
+        Predicted DOWN → tighten ASK (lower it, more competitive on sell side).
+        """
+        if not in_window:
+            return self.base_w, self.base_w
+        if self.predicted_dir == "UP":
+            return self.base_w - self.delta, self.base_w + self.delta
+        # DOWN
+        return self.base_w + self.delta, self.base_w - self.delta
+
+    def _compute_inv_skew(self, position: int) -> float:
+        """Hydrogel-style inventory skew: long position → negative skew (pulls
+        anchor down → bid less competitive, ask more competitive → unwind)."""
+        return -(position / self.limit) * self.inv_k
+
+    def _compute_microprice(self, od: OrderDepth) -> float:
+        best_bid = max(od.buy_orders.keys())
+        best_ask = min(od.sell_orders.keys())
+        bid_vol = od.buy_orders[best_bid]
+        ask_vol = abs(od.sell_orders[best_ask])
+        total_vol = bid_vol + ask_vol
+        if total_vol > 0:
+            return (best_bid * ask_vol + best_ask * bid_vol) / total_vol
+        return (best_bid + best_ask) / 2.0
+
+    def _compute_smile_theo(self, state: TradingState, spot: float, tte_years: float) -> float | None:
+        """Fit quadratic IV smile across all available voucher strikes, then
+        compute Black-Scholes call price for our strike at the fitted IV.
+        Returns None when the fit has fewer than 3 valid points.
+
+        Note: this duplicates a few lines from VoucherStrategy.act() to keep
+        VoucherStrategy untouched per the spec.
+        """
+        moneynesses: list[float] = []
+        ivs: list[float] = []
+        for s, sym in zip(STRIKES, VOUCHER_SYMBOLS):
+            od = state.order_depths[sym]
+            mid = (max(od.buy_orders.keys()) + min(od.sell_orders.keys())) / 2.0
+            intrinsic = max(0.0, spot - s)
+            if mid <= intrinsic + 0.5:
+                continue
+            iv = implied_vol(spot, float(s), tte_years, mid)
+            if iv is None:
+                continue
+            moneynesses.append(s / spot)
+            ivs.append(iv)
+        coeffs = fit_iv_smile(moneynesses, ivs)
+        if coeffs is None:
+            return None
+        fitted_iv = float(np.polyval(coeffs, self.strike / spot))
+        return bs_call_price(spot, float(self.strike), tte_years, fitted_iv)
+
+    def _compute_fair(self, state: TradingState) -> float | None:
+        """fair = 0.85 * microprice + 0.15 * smile_theo, falling back to pure
+        microprice when smile is unfittable."""
+        od = state.order_depths.get(self.symbol)
+        if od is None or not od.buy_orders or not od.sell_orders:
+            return None
+        microprice = self._compute_microprice(od)
+        spot = (max(state.order_depths[VEV_SPOT].buy_orders.keys())
+                + min(state.order_depths[VEV_SPOT].sell_orders.keys())) / 2.0
+        tte_days = ROUND_START_TTE_DAYS - state.timestamp / TICKS_PER_DAY
+        tte_years = max(tte_days, 0.001) / 365.0
+        smile_theo = self._compute_smile_theo(state, spot, tte_years)
+        if smile_theo is None:
+            return microprice
+        return 0.85 * microprice + 0.15 * smile_theo
+
+    def _compute_quote_prices(
+        self, od: OrderDepth, fair_used: float, bid_offset: float, ask_offset: float,
+    ) -> tuple[int, int]:
+        """Compute integer-tick bid/ask prices from the shifted fair value
+        and the bid/ask offsets. Clamp inside the existing book so we never
+        cross — pure passive."""
+        bid_price = floor(fair_used - bid_offset)
+        ask_price = ceil(fair_used + ask_offset)
+        best_bid = max(od.buy_orders.keys())
+        best_ask = min(od.sell_orders.keys())
+        bid_price = min(bid_price, best_ask - 1)
+        ask_price = max(ask_price, best_bid + 1)
+        return bid_price, ask_price
+
+    def _compute_quote_sizes(self, position: int) -> tuple[int, int]:
+        """Per-side quote quantities, capped by quote_size, max_clip, and the
+        remaining headroom to ±max_pos. Position cap is hard."""
+        room_buy = self.max_pos - position
+        room_sell = self.max_pos + position
+        bid_qty = max(0, min(self.quote_size, self.max_clip, room_buy))
+        ask_qty = max(0, min(self.quote_size, self.max_clip, room_sell))
+        return bid_qty, ask_qty
 
 
 # ── Delta-1 products ─────────────────────────────────────────────────────────
@@ -577,23 +820,49 @@ class Trader:
             "VEV_6500": 300,
         }
 
+        # Direction + size per strike from submissions/r4/mark14_direction.md.
+        # Strikes absent from this dict fall through to VoucherStrategy.
+        # To exclude a strike entirely, remove its entry.
+        #
+        # Track B (Mark14InformedMMStrategy) was implemented and tested on
+        # VEV_5300/5400/5500 on 2026-04-27. Backtest produced 0.00 fills on
+        # all three strikes — identical to Track A's default-mode result.
+        # Diagnosis: spread=1 books on 5400/5500 leave no room for spread-
+        # asymmetric quoting to differentiate from at-touch quotes; structural
+        # smile-theo bias pushes blended fair off mid; queue priority means
+        # at-touch quotes don't fill on these illiquid OTM books. Reverted
+        # to Track A. The InformedMM class is retained in this file for
+        # revert-ability and future reference. See cerebrum Decision Log
+        # [2026-04-27] and submissions/r4/backtest_summary.md for full notes.
+        mark14_config = {
+            "VEV_5300": {"direction": "follow_passive", "size": 50},
+            "VEV_5400": {"direction": "fade_at_touch", "size": 60},
+            "VEV_5500": {"direction": "fade_at_touch", "size": 25},
+        }
+
         self.strategies: dict[Symbol, Strategy] = {
             "HYDROGEL_PACK": HydrogelStrategy("HYDROGEL_PACK", limits["HYDROGEL_PACK"]),
-            "VELVETFRUIT_EXTRACT": VelvetfruitStrategy("VELVETFRUIT_EXTRACT", limits["VELVETFRUIT_EXTRACT"]),
-            # VEV_5300: Mark 14 follower (+0.225 lead-5 corr). Backtest day 1/2/3:
-            # -1266/-2926/-1462 — spread cost dominates at ~10 signals/day.
-            # Kept for further exploration (fade signal, different sizing).
-            "VEV_5300": Mark14FollowerStrategy("VEV_5300", limits["VEV_5300"]),
-            **{
-                f"VEV_{strike}": VoucherStrategy(
-                    f"VEV_{strike}", limits[f"VEV_{strike}"], strike,
+            "VELVETFRUIT_EXTRACT": VelvetfruitStrategy(
+                "VELVETFRUIT_EXTRACT", limits["VELVETFRUIT_EXTRACT"]
+            ),
+        }
+
+        for strike in STRIKES:
+            sym = f"VEV_{strike}"
+            cfg = mark14_config.get(sym)
+            if cfg is not None:
+                self.strategies[sym] = Mark14FollowerStrategy(
+                    sym, limits[sym],
+                    direction=cfg["direction"],
+                    size=cfg["size"],
+                )
+            else:
+                self.strategies[sym] = VoucherStrategy(
+                    sym, limits[sym], strike,
                     k=150, min_residual=0.01, max_otm_moneyness=0.996,
                     carry_window=100, carry_threshold=0.020,
                     autocorr_window=30, autocorr_threshold=-0.05,
                 )
-                for strike in STRIKES if strike != 5300
-            },
-        }
 
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
         orders: dict[Symbol, list[Order]] = {}
