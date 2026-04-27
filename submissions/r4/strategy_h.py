@@ -317,6 +317,26 @@ VEV_SPOT = "VELVETFRUIT_EXTRACT"
 ROUND_START_TTE_DAYS = 4.0
 TICKS_PER_DAY = 1_000_000
 
+# ── Mark 14 follower constants ───────────────────────────────────────────────
+
+# EDA (submissions/r4/eda_mark_bots.py): Mark 14 is the only bot with
+# |lead_5_corr|>0.15 and |net_dir|>0.3. Counterparty name format is
+# space-separated zero-padded ("Mark 14"), not "Mark_14".
+MARK14_INFORMED_BOT = "Mark 14"
+
+# Only Mark 14 product with positive lead-corr (+0.225). VEV_5400/5500 had
+# negative corr (likely Mark 14 pushing illiquid OTM strikes that revert).
+MARK14_SIGNAL_SYMBOL = "VEV_5300"
+
+# EDA lead-5 corr peak. Price rows are 100 timestamp units apart, so 5 rows
+# = 500 ticks. Matches TimoDiehm's KELP Olivia-window of 500 ticks.
+MARK14_WINDOW_TICKS = 500
+
+# 1/3 of the 300 position limit. The +0.225 lead-5 corr is modest — full
+# conviction is not justified. Scale up if backtest is consistently positive
+# across all 3 days.
+MARK14_TARGET_SIZE = 100
+
 
 # ── Voucher IV smile scalper ─────────────────────────────────────────────────
 
@@ -425,6 +445,52 @@ class VoucherStrategy(StatefulStrategy[dict[str, Any]]):
             self.sell(best_bid, min(qty_needed, available))
 
 
+# ── Mark 14 follower ─────────────────────────────────────────────────────────
+
+class Mark14FollowerStrategy(StatefulStrategy[dict]):
+    def __init__(self, symbol: str, limit: int) -> None:
+        super().__init__(symbol, limit)
+        self.last_signal_ts: int | None = None
+
+    def save(self) -> dict:
+        return {"last_signal_ts": self.last_signal_ts}
+
+    def load(self, data: dict) -> None:
+        self.last_signal_ts = data.get("last_signal_ts")
+
+    def act(self, state: TradingState) -> None:
+        # Day-boundary guard: timestamp resets each day → drop stale ts.
+        if self.last_signal_ts is not None and state.timestamp < self.last_signal_ts:
+            self.last_signal_ts = None
+
+        # Detect signal: scan market_trades for Mark 14 buys on this symbol.
+        trades = state.market_trades.get(self.symbol, [])
+        mark14_buy_ts = [t.timestamp for t in trades if t.buyer == MARK14_INFORMED_BOT]
+        if mark14_buy_ts:
+            self.last_signal_ts = max(mark14_buy_ts)
+
+        # Compute target.
+        in_window = (
+            self.last_signal_ts is not None
+            and state.timestamp - self.last_signal_ts <= MARK14_WINDOW_TICKS
+        )
+        target = MARK14_TARGET_SIZE if in_window else 0
+
+        # Reconcile to target by crossing the spread.
+        position = state.position.get(self.symbol, 0)
+        delta = target - position
+        od = state.order_depths[self.symbol]
+
+        if delta > 0 and od.sell_orders:
+            best_ask = min(od.sell_orders.keys())
+            available = abs(od.sell_orders[best_ask])
+            self.buy(best_ask, min(delta, available))
+        elif delta < 0 and od.buy_orders:
+            best_bid = max(od.buy_orders.keys())
+            available = od.buy_orders[best_bid]
+            self.sell(best_bid, min(-delta, available))
+
+
 # ── Delta-1 products ─────────────────────────────────────────────────────────
 
 class HydrogelStrategy(MarketMakingStrategy):
@@ -514,7 +580,10 @@ class Trader:
         self.strategies: dict[Symbol, Strategy] = {
             "HYDROGEL_PACK": HydrogelStrategy("HYDROGEL_PACK", limits["HYDROGEL_PACK"]),
             "VELVETFRUIT_EXTRACT": VelvetfruitStrategy("VELVETFRUIT_EXTRACT", limits["VELVETFRUIT_EXTRACT"]),
-            # Iterates over each voucher and creates a strategy for it with the appropriate strike
+            # VEV_5300: Mark 14 follower (+0.225 lead-5 corr). Backtest day 1/2/3:
+            # -1266/-2926/-1462 — spread cost dominates at ~10 signals/day.
+            # Kept for further exploration (fade signal, different sizing).
+            "VEV_5300": Mark14FollowerStrategy("VEV_5300", limits["VEV_5300"]),
             **{
                 f"VEV_{strike}": VoucherStrategy(
                     f"VEV_{strike}", limits[f"VEV_{strike}"], strike,
@@ -522,7 +591,7 @@ class Trader:
                     carry_window=100, carry_threshold=0.020,
                     autocorr_window=30, autocorr_threshold=-0.05,
                 )
-                for strike in STRIKES
+                for strike in STRIKES if strike != 5300
             },
         }
 
