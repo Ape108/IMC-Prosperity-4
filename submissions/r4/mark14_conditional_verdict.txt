@@ -1,0 +1,148 @@
+Loading R4 trades and prices (days 1/2/3)...
+  2172 Mark 14 trades on ['HYDROGEL_PACK', 'VELVETFRUIT_EXTRACT', 'VEV_4000', 'VEV_5200', 'VEV_5300', 'VEV_5400', 'VEV_5500'].
+=== Mark 14 Conditional Edge Analysis ===
+
+VEV_5300 (predicted_dir=+1):
+  burst          0        lag= 5 n= 30 mean=-0.417t t=-2.53 wr=0.20
+  burst          0        lag=10 n= 30 mean=-0.150t t=-0.72 wr=0.33
+  burst          0        lag=20 n= 30 mean=-0.217t t=-0.76 wr=0.33
+  burst          0        lag=50 n= 30 mean=+0.417t t=+0.80 wr=0.53
+  cooling        >=100    lag= 5 n= 30 mean=-0.417t t=-2.53 wr=0.20
+  cooling        >=100    lag=10 n= 30 mean=-0.150t t=-0.72 wr=0.33
+  cooling        >=100    lag=20 n= 30 mean=-0.217t t=-0.76 wr=0.33
+  cooling        >=100    lag=50 n= 30 mean=+0.417t t=+0.80 wr=0.53
+  day            1        lag= 5 n=  6 mean=-0.167t t=-0.54 wr=0.17
+  day            1        lag=10 n=  6 mean=+0.250t t=+0.75 wr=0.50
+  day            1        lag=20 n=  6 mean=+0.250t t=+0.46 wr=0.50
+  day            1        lag=50 n=  6 mean=+1.750t t=+1.56 wr=0.67
+  day            2        lag= 5 n= 14 mean=-0.786t t=-2.75 wr=0.14
+  day            2        lag=10 n= 14 mean=-0.679t t=-2.06 wr=0.14
+  day            2        lag=20 n= 14 mean=-0.607t t=-1.48 wr=0.21
+  day            2        lag=50 n= 14 mean=-0.393t t=-0.52 wr=0.36
+  day            3        lag= 5 n= 10 mean=-0.050t t=-0.32 wr=0.30
+  day            3        lag=10 n= 10 mean=+0.350t t=+1.21 wr=0.50
+  day            3        lag=20 n= 10 mean=+0.050t t=+0.09 wr=0.40
+  day            3        lag=50 n= 10 mean=+0.750t t=+0.85 wr=0.70
+  joint22        no       lag= 5 n= 29 mean=-0.397t t=-2.35 wr=0.21
+  joint22        no       lag=10 n= 29 mean=-0.172t t=-0.80 wr=0.31
+  joint22        no       lag=20 n= 29 mean=-0.224t t=-0.76 wr=0.34
+  joint22        no       lag=50 n= 29 mean=+0.466t t=+0.87 wr=0.55
+  joint22        yes      lag= 5 n=  1 mean=-1.000t t=+nan wr=0.00
+  joint22        yes      lag=10 n=  1 mean=+0.500t t=+nan wr=1.00
+  joint22        yes      lag=20 n=  1 mean=+0.000t t=+nan wr=0.00
+  joint22        yes      lag=50 n=  1 mean=-1.000t t=+nan wr=0.00
+  spread         1t       lag= 5 n= 12 mean=+0.000t t=+0.00 wr=0.33
+  spread         1t       lag=10 n= 12 mean=+0.333t t=+1.43 wr=0.42
+  spread         1t       lag=20 n= 12 mean=+0.083t t=+0.18 wr=0.42
+  spread         1t       lag=50 n= 12 mean=+0.583t t=+0.85 wr=0.67
+  spread         2t       lag= 5 n= 17 mean=-0.706t t=-2.78 wr=0.12
+  spread         2t       lag=10 n= 17 mean=-0.471t t=-1.52 wr=0.29
+  spread         2t       lag=20 n= 17 mean=-0.471t t=-1.23 wr=0.24
+  spread         2t       lag=50 n= 17 mean=+0.059t t=+0.08 wr=0.41
+  spread         >=3t     lag= 5 n=  1 mean=-0.500t t=+nan wr=0.00
+  spread         >=3t     lag=10 n=  1 mean=-0.500t t=+nan wr=0.00
+  spread         >=3t     lag=20 n=  1 mean=+0.500t t=+nan wr=1.00
+  spread         >=3t     lag=50 n=  1 mean=+4.500t t=+nan wr=1.00
+  unconditional  all      lag= 5 n= 30 mean=-0.417t t=-2.53 wr=0.20
+  unconditional  all      lag=10 n= 30 mean=-0.150t t=-0.72 wr=0.33
+  unconditional  all      lag=20 n= 30 mean=-0.217t t=-0.76 wr=0.33
+  unconditional  all      lag=50 n= 30 mean=+0.417t t=+0.80 wr=0.53
+  vol            rest     lag= 5 n= 22 mean=-0.318t t=-1.88 wr=0.23
+  vol            rest     lag=10 n= 22 mean=+0.000t t=+0.00 wr=0.36
+  vol            rest     lag=20 n= 22 mean=-0.159t t=-0.47 wr=0.41
+  vol            rest     lag=50 n= 22 mean=+0.432t t=+0.67 wr=0.59
+  vol            top      lag= 5 n=  8 mean=-0.688t t=-1.67 wr=0.12
+  vol            top      lag=10 n=  8 mean=-0.562t t=-1.29 wr=0.25
+  vol            top      lag=20 n=  8 mean=-0.375t t=-0.69 wr=0.12
+  vol            top      lag=50 n=  8 mean=+0.375t t=+0.43 wr=0.38
+
+VEV_5400 (predicted_dir=-1):
+  burst          0        lag= 5 n= 13 mean=+0.385t t=+3.33 wr=0.54
+  burst          0        lag=10 n= 13 mean=+0.500t t=+3.34 wr=0.54
+  burst          0        lag=20 n= 13 mean=+0.346t t=+1.24 wr=0.46
+  burst          0        lag=50 n= 13 mean=+0.769t t=+1.37 wr=0.46
+  cooling        >=100    lag= 5 n= 13 mean=+0.385t t=+3.33 wr=0.54
+  cooling        >=100    lag=10 n= 13 mean=+0.500t t=+3.34 wr=0.54
+  cooling        >=100    lag=20 n= 13 mean=+0.346t t=+1.24 wr=0.46
+  cooling        >=100    lag=50 n= 13 mean=+0.769t t=+1.37 wr=0.46
+  day            1        lag= 5 n=  5 mean=+0.400t t=+2.14 wr=0.60
+  day            1        lag=10 n=  5 mean=+0.500t t=+2.24 wr=0.60
+  day            1        lag=20 n=  5 mean=+0.500t t=+0.91 wr=0.60
+  day            1        lag=50 n=  5 mean=+1.800t t=+1.50 wr=0.60
+  day            2        lag= 5 n=  2 mean=+0.750t t=+3.00 wr=1.00
+  day            2        lag=10 n=  2 mean=+0.750t t=+3.00 wr=1.00
+  day            2        lag=20 n=  2 mean=+0.500t t=+1.00 wr=0.50
+  day            2        lag=50 n=  2 mean=+0.500t t=+1.00 wr=0.50
+  day            3        lag= 5 n=  6 mean=+0.250t t=+1.46 wr=0.33
+  day            3        lag=10 n=  6 mean=+0.417t t=+1.54 wr=0.33
+  day            3        lag=20 n=  6 mean=+0.167t t=+0.40 wr=0.33
+  day            3        lag=50 n=  6 mean=+0.000t t=+0.00 wr=0.33
+  joint22        no       lag= 5 n= 13 mean=+0.385t t=+3.33 wr=0.54
+  joint22        no       lag=10 n= 13 mean=+0.500t t=+3.34 wr=0.54
+  joint22        no       lag=20 n= 13 mean=+0.346t t=+1.24 wr=0.46
+  joint22        no       lag=50 n= 13 mean=+0.769t t=+1.37 wr=0.46
+  spread         1t       lag= 5 n= 12 mean=+0.417t t=+3.46 wr=0.58
+  spread         1t       lag=10 n= 12 mean=+0.542t t=+3.46 wr=0.58
+  spread         1t       lag=20 n= 12 mean=+0.417t t=+1.42 wr=0.50
+  spread         1t       lag=50 n= 12 mean=+0.958t t=+1.67 wr=0.50
+  spread         2t       lag= 5 n=  1 mean=+0.000t t=+nan wr=0.00
+  spread         2t       lag=10 n=  1 mean=+0.000t t=+nan wr=0.00
+  spread         2t       lag=20 n=  1 mean=-0.500t t=+nan wr=0.00
+  spread         2t       lag=50 n=  1 mean=-1.500t t=+nan wr=0.00
+  unconditional  all      lag= 5 n= 13 mean=+0.385t t=+3.33 wr=0.54
+  unconditional  all      lag=10 n= 13 mean=+0.500t t=+3.34 wr=0.54
+  unconditional  all      lag=20 n= 13 mean=+0.346t t=+1.24 wr=0.46
+  unconditional  all      lag=50 n= 13 mean=+0.769t t=+1.37 wr=0.46
+  vol            rest     lag= 5 n=  8 mean=+0.375t t=+2.39 wr=0.50
+  vol            rest     lag=10 n=  8 mean=+0.438t t=+2.50 wr=0.50
+  vol            rest     lag=20 n=  8 mean=+0.062t t=+0.17 wr=0.25
+  vol            rest     lag=50 n=  8 mean=+0.375t t=+0.51 wr=0.25
+  vol            top      lag= 5 n=  5 mean=+0.400t t=+2.14 wr=0.60
+  vol            top      lag=10 n=  5 mean=+0.600t t=+2.06 wr=0.60
+  vol            top      lag=20 n=  5 mean=+0.800t t=+1.97 wr=0.80
+  vol            top      lag=50 n=  5 mean=+1.400t t=+1.58 wr=0.80
+
+VEV_5500 (predicted_dir=-1):
+  burst          0        lag= 5 n=  7 mean=+0.286t t=+1.55 wr=0.29
+  burst          0        lag=10 n=  7 mean=+0.143t t=+1.00 wr=0.14
+  burst          0        lag=20 n=  7 mean=+0.429t t=+2.12 wr=0.43
+  burst          0        lag=50 n=  7 mean=+0.429t t=+2.12 wr=0.43
+  cooling        >=100    lag= 5 n=  7 mean=+0.286t t=+1.55 wr=0.29
+  cooling        >=100    lag=10 n=  7 mean=+0.143t t=+1.00 wr=0.14
+  cooling        >=100    lag=20 n=  7 mean=+0.429t t=+2.12 wr=0.43
+  cooling        >=100    lag=50 n=  7 mean=+0.429t t=+2.12 wr=0.43
+  day            1        lag= 5 n=  3 mean=+0.000t t=+nan wr=0.00
+  day            1        lag=10 n=  3 mean=+0.000t t=+nan wr=0.00
+  day            1        lag=20 n=  3 mean=+0.667t t=+2.00 wr=0.67
+  day            1        lag=50 n=  3 mean=+0.333t t=+1.00 wr=0.33
+  day            2        lag= 5 n=  3 mean=+0.333t t=+1.00 wr=0.33
+  day            2        lag=10 n=  3 mean=+0.000t t=+nan wr=0.00
+  day            2        lag=20 n=  3 mean=+0.000t t=+nan wr=0.00
+  day            2        lag=50 n=  3 mean=+0.333t t=+1.00 wr=0.33
+  day            3        lag= 5 n=  1 mean=+1.000t t=+nan wr=1.00
+  day            3        lag=10 n=  1 mean=+1.000t t=+nan wr=1.00
+  day            3        lag=20 n=  1 mean=+1.000t t=+nan wr=1.00
+  day            3        lag=50 n=  1 mean=+1.000t t=+nan wr=1.00
+  joint22        no       lag= 5 n=  7 mean=+0.286t t=+1.55 wr=0.29
+  joint22        no       lag=10 n=  7 mean=+0.143t t=+1.00 wr=0.14
+  joint22        no       lag=20 n=  7 mean=+0.429t t=+2.12 wr=0.43
+  joint22        no       lag=50 n=  7 mean=+0.429t t=+2.12 wr=0.43
+  spread         1t       lag= 5 n=  7 mean=+0.286t t=+1.55 wr=0.29
+  spread         1t       lag=10 n=  7 mean=+0.143t t=+1.00 wr=0.14
+  spread         1t       lag=20 n=  7 mean=+0.429t t=+2.12 wr=0.43
+  spread         1t       lag=50 n=  7 mean=+0.429t t=+2.12 wr=0.43
+  unconditional  all      lag= 5 n=  7 mean=+0.286t t=+1.55 wr=0.29
+  unconditional  all      lag=10 n=  7 mean=+0.143t t=+1.00 wr=0.14
+  unconditional  all      lag=20 n=  7 mean=+0.429t t=+2.12 wr=0.43
+  unconditional  all      lag=50 n=  7 mean=+0.429t t=+2.12 wr=0.43
+  vol            rest     lag= 5 n=  5 mean=+0.400t t=+1.63 wr=0.40
+  vol            rest     lag=10 n=  5 mean=+0.200t t=+1.00 wr=0.20
+  vol            rest     lag=20 n=  5 mean=+0.600t t=+2.45 wr=0.60
+  vol            rest     lag=50 n=  5 mean=+0.600t t=+2.45 wr=0.60
+  vol            top      lag= 5 n=  2 mean=+0.000t t=+nan wr=0.00
+  vol            top      lag=10 n=  2 mean=+0.000t t=+nan wr=0.00
+  vol            top      lag=20 n=  2 mean=+0.000t t=+nan wr=0.00
+  vol            top      lag=50 n=  2 mean=+0.000t t=+nan wr=0.00
+
+=== VERDICT ===
+NO PASS — shelve Mark 14
