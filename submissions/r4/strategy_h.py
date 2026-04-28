@@ -816,6 +816,93 @@ class Vev4000MMStrategy(Strategy):
             self.sell(ask_price, ask_qty)
 
 
+# ── VelvetfruitExtract z-score signal ────────────────────────────────────────
+
+
+class VelvetfruitSignalStrategy(SignalStrategy, StatefulStrategy[dict[str, Any]]):
+    """Aggressive mean-reversion signal strategy for VELVETFRUIT_EXTRACT.
+
+    Computes a smoothed rolling z-score of mid prices. Crosses the spread on
+    deviation (buys at best_ask on LONG, sells at best_bid on SHORT). Returns
+    Signal.NEUTRAL (not None) when score reverts between thresholds — this
+    flattens position on reversion rather than holding until the opposite
+    signal fires (correct for a lag-1 autocorr signal).
+
+    All five parameters are Optuna-tunable. Starting defaults from jmerle's
+    VolcanicRock (P3 underlying equivalent): zscore_period=75,
+    smoothing_period=100, threshold=0.5.
+    """
+
+    def __init__(
+        self,
+        symbol: Symbol,
+        limit: int,
+        target_position: int = 60,
+        zscore_period: int = 75,
+        smoothing_period: int = 100,
+        threshold: float = 0.5,
+    ) -> None:
+        super().__init__(symbol, limit)
+        self.target_position = min(target_position, limit)
+        self.zscore_period = zscore_period
+        self.smoothing_period = smoothing_period
+        self.threshold = threshold
+        self.history: list[float] = []
+
+    def get_signal(self, state: TradingState) -> Signal | None:
+        mid = self.get_mid_price(state, self.symbol)
+        self.history.append(mid)
+
+        required = self.zscore_period + self.smoothing_period
+        if len(self.history) > required:
+            self.history.pop(0)
+        if len(self.history) < required:
+            return None  # warmup: keep last signal, don't update
+
+        hist = pd.Series(self.history)
+        score = (
+            ((hist - hist.rolling(self.zscore_period).mean()) / hist.rolling(self.zscore_period).std())
+            .rolling(self.smoothing_period)
+            .mean()
+            .iloc[-1]
+        )
+
+        if score < -self.threshold:
+            return Signal.LONG
+        if score > self.threshold:
+            return Signal.SHORT
+        return Signal.NEUTRAL  # explicit exit — closes position on reversion
+
+    def act(self, state: TradingState) -> None:
+        new_signal = self.get_signal(state)
+        if new_signal is not None:
+            self.signal = new_signal
+
+        position = state.position.get(self.symbol, 0)
+        od = state.order_depths[self.symbol]
+
+        if self.signal == Signal.NEUTRAL:
+            if position > 0:
+                self.sell(max(od.buy_orders.keys()), position)
+            elif position < 0:
+                self.buy(min(od.sell_orders.keys()), -position)
+        elif self.signal == Signal.LONG:
+            target = self.target_position
+            if position < target:
+                self.buy(min(od.sell_orders.keys()), target - position)
+        elif self.signal == Signal.SHORT:
+            target = -self.target_position
+            if position > target:
+                self.sell(max(od.buy_orders.keys()), position - target)
+
+    def save(self) -> dict[str, Any]:
+        return {"signal": SignalStrategy.save(self), "history": self.history}
+
+    def load(self, data: dict[str, Any]) -> None:
+        SignalStrategy.load(self, data["signal"])
+        self.history = data.get("history", [])
+
+
 # ── Delta-1 products ─────────────────────────────────────────────────────────
 
 class HydrogelStrategy(MarketMakingStrategy):
@@ -879,6 +966,10 @@ class HydrogelStrategy(MarketMakingStrategy):
 
 
 class VelvetfruitStrategy(MarketMakingStrategy):
+    """Neutral mid-price MM. Backtests at 0 (passive orders never fill in
+    historical data). Kept as safe fallback — does not accumulate directional
+    inventory risk unlike aggressive strategies."""
+
     def get_true_value(self, state: TradingState) -> float:
         return self.get_mid_price(state, self.symbol)
 
@@ -933,7 +1024,6 @@ class Trader:
             sym = f"VEV_{strike}"
             if sym == "VEV_4000":
                 # Inside-spread MM with hard position bands. Wide-spread, deep-ITM
-                # call — see docs/superpowers/specs/2026-04-27-r4-vev4000-mm-design.md.
                 self.strategies[sym] = Vev4000MMStrategy(sym, limits[sym])
                 continue
             cfg = mark14_config.get(sym)
