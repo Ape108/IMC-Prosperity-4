@@ -909,6 +909,12 @@ class HydrogelStrategy(MarketMakingStrategy):
     def get_true_value(self, state: TradingState) -> float:
         return self.get_mid_price(state, self.symbol)
 
+    def _compute_signal_bias(self, state: TradingState) -> float:
+        """Hook for subclasses to inject a directional bias on the quote
+        anchor. Default: no bias. See `Mark14HydrogelBiasStrategy` for an
+        override that uses Mark 14's signed flow on HYDROGEL_PACK."""
+        return 0.0
+
     def act(self, state: TradingState) -> None:
         od = state.order_depths[self.symbol]
         position = state.position.get(self.symbol, 0)
@@ -926,7 +932,11 @@ class HydrogelStrategy(MarketMakingStrategy):
         )
         base_value = 0.85 * microprice + 0.15 * 10_000
         inventory_ratio = position / self.limit
-        skewed_value = base_value - inventory_ratio * 10.0
+        skewed_value = (
+            base_value
+            - inventory_ratio * 10.0
+            + self._compute_signal_bias(state)
+        )
         dynamic_width = 1.5 + abs(inventory_ratio) * 3.5
 
         max_buy_price = math.floor(skewed_value - dynamic_width)
@@ -965,6 +975,71 @@ class HydrogelStrategy(MarketMakingStrategy):
             self.sell(int(price), to_sell)
 
 
+class Mark14HydrogelBiasStrategy(HydrogelStrategy, StatefulStrategy[dict[str, Any]]):
+    """HydrogelStrategy with a directional anchor shift driven by Mark 14's
+    rolling net signed flow on HYDROGEL_PACK.
+
+    See docs/superpowers/specs/2026-04-28-r4-mark14-hydrogel-bias-design.md.
+    """
+
+    def __init__(
+        self,
+        symbol: Symbol,
+        limit: int,
+        bias_k: float = 1.0,
+        scale: float = 10.0,
+        window_ticks: int = 5000,
+    ) -> None:
+        super().__init__(symbol, limit)
+        self.bias_k = bias_k
+        self.scale = scale
+        self.window_ticks = window_ticks
+        self.history: list[tuple[int, int]] = []
+
+    def save(self) -> dict[str, Any]:
+        return {"history": self.history}
+
+    def load(self, data: dict[str, Any]) -> None:
+        self.history = [(int(x[0]), int(x[1])) for x in data.get("history", [])]
+
+    def _compute_signal_bias(self, state: TradingState) -> float:
+        """Rolling net Mark 14 signed flow → proportional anchor bias.
+
+        Update steps:
+        1. Day-boundary guard: timestamps reset each day; clear stale history.
+        2. Ingest new trades from state.market_trades[symbol] where Mark 14
+           is buyer or seller. Signed by Mark 14's side.
+        3. Trim history: drop entries with ts < state.timestamp - window_ticks.
+        4. Compute net = sum of signed_qty.
+        5. bias = bias_k * clip(net / scale, -1, 1).
+        """
+        ts = state.timestamp
+
+        # 1. Day-boundary guard.
+        if self.history and ts < self.history[-1][0]:
+            self.history = []
+
+        # 2. Ingest Mark 14 trades.
+        for trade in state.market_trades.get(self.symbol, []):
+            if trade.buyer == "Mark 14":
+                self.history.append((trade.timestamp, +trade.quantity))
+            elif trade.seller == "Mark 14":
+                self.history.append((trade.timestamp, -trade.quantity))
+
+        # 3. Trim old entries.
+        cutoff = ts - self.window_ticks
+        self.history = [
+            (entry[0], entry[1]) for entry in self.history if entry[0] >= cutoff
+        ]
+
+        # 4. Compute net.
+        net = sum(entry[1] for entry in self.history)
+
+        # 5. Proportional bias with cap.
+        ratio = max(-1.0, min(1.0, net / self.scale))
+        return self.bias_k * ratio
+
+
 class VelvetfruitEMAStrategy(MarketMakingStrategy, StatefulStrategy[dict[str, float | None]]):
     FAST_WINDOW = 20
     SLOW_WINDOW = 200
@@ -999,12 +1074,81 @@ class VelvetfruitEMAStrategy(MarketMakingStrategy, StatefulStrategy[dict[str, fl
 
 
 class VelvetfruitStrategy(MarketMakingStrategy):
-    """Neutral mid-price MM. Backtests at 0 (passive orders never fill in
-    historical data). Kept as safe fallback — does not accumulate directional
-    inventory risk unlike aggressive strategies."""
+    """Neutral mid-price MM on VELVETFRUIT_EXTRACT.
+
+    Quotes around mid-price. Large fills on big intraday dips/recoveries are the
+    primary alpha source — do not add inventory skew or position caps that would
+    reduce fill size on those moves.
+    """
 
     def get_true_value(self, state: TradingState) -> float:
         return self.get_mid_price(state, self.symbol)
+
+
+class VelvetfruitIVGatedStrategy(VelvetfruitStrategy, StatefulStrategy[dict]):
+    """VelvetfruitStrategy with rolling ATM IV position cap.
+
+    When EMA of ATM IV rises above iv_floor, effective position limit shrinks
+    proportionally. At or below the floor, behavior is identical to baseline.
+    """
+
+    def __init__(
+        self,
+        symbol: str,
+        limit: int,
+        iv_floor: float = 0.20,
+        k: float = 2.0,
+        min_frac: float = 0.5,
+        iv_alpha: float = 0.05,
+    ) -> None:
+        VelvetfruitStrategy.__init__(self, symbol, limit)
+        self._base_limit = limit
+        self.iv_floor = iv_floor
+        self.k = k
+        self.min_frac = min_frac
+        self.iv_alpha = iv_alpha
+        self._iv_ema: float = iv_floor
+        self._last_ts: int | None = None
+
+    def _compute_atm_iv(self, state: TradingState) -> float | None:
+        spot_od = state.order_depths.get(VEV_SPOT)
+        if not spot_od or not spot_od.buy_orders or not spot_od.sell_orders:
+            return None
+        spot = (max(spot_od.buy_orders) + min(spot_od.sell_orders)) / 2.0
+        tte_days = ROUND_START_TTE_DAYS - state.timestamp / TICKS_PER_DAY
+        tte_years = max(tte_days, 0.001) / 365.0
+        atm_strike = min(STRIKES, key=lambda s: abs(s - spot))
+        od = state.order_depths.get(f"VEV_{atm_strike}")
+        if not od or not od.buy_orders or not od.sell_orders:
+            return None
+        mid = (max(od.buy_orders) + min(od.sell_orders)) / 2.0
+        intrinsic = max(0.0, spot - atm_strike)
+        if mid <= intrinsic + 0.5:
+            return None
+        return implied_vol(spot, float(atm_strike), tte_years, mid)
+
+    def _capped_limit(self, state: TradingState) -> int:
+        if self._last_ts is not None and state.timestamp < self._last_ts:
+            self._iv_ema = self.iv_floor
+        self._last_ts = state.timestamp
+        atm_iv = self._compute_atm_iv(state)
+        if atm_iv is not None:
+            self._iv_ema = self.iv_alpha * atm_iv + (1 - self.iv_alpha) * self._iv_ema
+        frac = max(self.min_frac, 1.0 - self.k * max(0.0, self._iv_ema - self.iv_floor))
+        return max(1, int(self._base_limit * frac))
+
+    def act(self, state: TradingState) -> None:
+        original_limit = self.limit
+        self.limit = self._capped_limit(state)
+        super().act(state)
+        self.limit = original_limit
+
+    def save(self) -> dict:
+        return {"iv_ema": self._iv_ema, "last_ts": self._last_ts}
+
+    def load(self, data: dict) -> None:
+        self._iv_ema = float(data.get("iv_ema", self.iv_floor))
+        self._last_ts = data.get("last_ts")
 
 
 # ── Trader ───────────────────────────────────────────────────────────────────
@@ -1047,9 +1191,12 @@ class Trader:
         }
 
         self.strategies: dict[Symbol, Strategy] = {
-            "HYDROGEL_PACK": HydrogelStrategy("HYDROGEL_PACK", limits["HYDROGEL_PACK"]),
-            "VELVETFRUIT_EXTRACT": VelvetfruitEMAStrategy(
-                "VELVETFRUIT_EXTRACT", limits["VELVETFRUIT_EXTRACT"]
+            "HYDROGEL_PACK": Mark14HydrogelBiasStrategy(
+                "HYDROGEL_PACK", limits["HYDROGEL_PACK"],
+            ),
+            "VELVETFRUIT_EXTRACT": VelvetfruitIVGatedStrategy(
+                "VELVETFRUIT_EXTRACT",
+                limits["VELVETFRUIT_EXTRACT"],
             ),
         }
 
@@ -1059,14 +1206,6 @@ class Trader:
                 # Inside-spread MM with hard position bands. Wide-spread, deep-ITM
                 self.strategies[sym] = Vev4000MMStrategy(sym, limits[sym])
                 continue
-            """
-            cfg = mark14_config.get(sym)
-            if cfg is not None:
-                self.strategies[sym] = Mark14FollowerStrategy(
-                    sym, limits[sym],
-                    direction=cfg["direction"],
-                    size=cfg["size"],
-                )
             else:
                 self.strategies[sym] = VoucherStrategy(
                     sym, limits[sym], strike,
@@ -1074,7 +1213,7 @@ class Trader:
                     carry_window=100, carry_threshold=0.020,
                     autocorr_window=30, autocorr_threshold=-0.05,
                 )
-            """
+                
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
         orders: dict[Symbol, list[Order]] = {}
         conversions = 0
