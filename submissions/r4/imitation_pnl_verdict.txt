@@ -1,0 +1,316 @@
+Loading R4 trades and prices (days 1/2/3)...
+  8562 Mark-bot trade rows × 7 bots × 11 products.
+=== Bot Imitation-PnL Sweep ===
+Cells: 308  with n>=10: 80  passing: 0
+
+Mark 22   VEV_5100        horizon=50  n=   3  mean_t=  +5.000  cost= 4.000  net_t=  +1.000  t=  +1.42  hit= 1.00  PASS=no
+Mark 22   VEV_5000        horizon=50  n=   3  mean_t=  +5.667  cost= 6.000  net_t=  -0.333  t=  +1.54  hit= 1.00  PASS=no
+Mark 01   VEV_5200        horizon=50  n=  11  mean_t=  +2.591  cost= 3.000  net_t=  -0.409  t=  +1.76  hit= 0.73  PASS=no
+Mark 01   VEV_5400        horizon=50  n= 262  mean_t=  +0.160  cost= 1.000  net_t=  -0.840  t=  +2.26  hit= 0.42  PASS=no
+Mark 01   VEV_5400        horizon=20  n= 263  mean_t=  +0.078  cost= 1.000  net_t=  -0.922  t=  +1.66  hit= 0.36  PASS=no
+Mark 14   VEV_5500        horizon= 5  n=   7  mean_t=  +0.071  cost= 1.000  net_t=  -0.929  t=  +0.55  hit= 0.29  PASS=no
+Mark 01   VEV_5500        horizon=50  n= 298  mean_t=  +0.052  cost= 1.000  net_t=  -0.948  t=  +1.54  hit= 0.23  PASS=no
+Mark 01   VEV_5500        horizon=20  n= 299  mean_t=  +0.047  cost= 1.000  net_t=  -0.953  t=  +1.92  hit= 0.17  PASS=no
+Mark 01   VEV_5400        horizon=10  n= 263  mean_t=  +0.032  cost= 1.000  net_t=  -0.968  t=  +1.01  hit= 0.27  PASS=no
+Mark 22   VEV_5500        horizon= 5  n= 306  mean_t=  +0.015  cost= 1.000  net_t=  -0.985  t=  +1.01  hit= 0.08  PASS=no
+Mark 22   VEV_5400        horizon= 5  n= 276  mean_t=  +0.011  cost= 1.000  net_t=  -0.989  t=  +0.45  hit= 0.23  PASS=no
+Mark 01   VEV_5500        horizon=10  n= 299  mean_t=  +0.008  cost= 1.000  net_t=  -0.992  t=  +0.47  hit= 0.10  PASS=no
+Mark 01   VEV_6000        horizon= 5  n= 317  mean_t=  +0.000  cost= 1.000  net_t=  -1.000  t=   nan   hit= 0.00  PASS=no
+Mark 01   VEV_6000        horizon=10  n= 317  mean_t=  +0.000  cost= 1.000  net_t=  -1.000  t=   nan   hit= 0.00  PASS=no
+Mark 01   VEV_6000        horizon=20  n= 317  mean_t=  +0.000  cost= 1.000  net_t=  -1.000  t=   nan   hit= 0.00  PASS=no
+Mark 01   VEV_6000        horizon=50  n= 316  mean_t=  +0.000  cost= 1.000  net_t=  -1.000  t=   nan   hit= 0.00  PASS=no
+Mark 01   VEV_6500        horizon= 5  n= 317  mean_t=  +0.000  cost= 1.000  net_t=  -1.000  t=   nan   hit= 0.00  PASS=no
+Mark 01   VEV_6500        horizon=10  n= 317  mean_t=  +0.000  cost= 1.000  net_t=  -1.000  t=   nan   hit= 0.00  PASS=no
+Mark 01   VEV_6500        horizon=20  n= 317  mean_t=  +0.000  cost= 1.000  net_t=  -1.000  t=   nan   hit= 0.00  PASS=no
+Mark 01   VEV_6500        horizon=50  n= 316  mean_t=  +0.000  cost= 1.000  net_t=  -1.000  t=   nan   hit= 0.00  PASS=no
+Mark 22   VEV_6000        horizon= 5  n= 317  mean_t=  +0.000  cost= 1.000  net_t=  -1.000  t=   nan   hit= 0.00  PASS=no
+Mark 22   VEV_6000        horizon=10  n= 317  mean_t=  +0.000  cost= 1.000  net_t=  -1.000  t=   nan   hit= 0.00  PASS=no
+Mark 22   VEV_6000        horizon=20  n= 317  mean_t=  +0.000  cost= 1.000  net_t=  -1.000  t=   nan   hit= 0.00  PASS=no
+Mark 22   VEV_6000        horizon=50  n= 316  mean_t=  +0.000  cost= 1.000  net_t=  -1.000  t=   nan   hit= 0.00  PASS=no
+Mark 22   VEV_6500        horizon= 5  n= 317  mean_t=  +0.000  cost= 1.000  net_t=  -1.000  t=   nan   hit= 0.00  PASS=no
+Mark 22   VEV_6500        horizon=10  n= 317  mean_t=  +0.000  cost= 1.000  net_t=  -1.000  t=   nan   hit= 0.00  PASS=no
+Mark 22   VEV_6500        horizon=20  n= 317  mean_t=  +0.000  cost= 1.000  net_t=  -1.000  t=   nan   hit= 0.00  PASS=no
+Mark 22   VEV_6500        horizon=50  n= 316  mean_t=  +0.000  cost= 1.000  net_t=  -1.000  t=   nan   hit= 0.00  PASS=no
+Mark 01   VEV_5400        horizon= 5  n= 263  mean_t=  -0.004  cost= 1.000  net_t=  -1.004  t=  -0.16  hit= 0.21  PASS=no
+Mark 22   VEV_5500        horizon=10  n= 306  mean_t=  -0.005  cost= 1.000  net_t=  -1.005  t=  -0.28  hit= 0.09  PASS=no
+Mark 01   VEV_5500        horizon= 5  n= 299  mean_t=  -0.017  cost= 1.000  net_t=  -1.017  t=  -1.15  hit= 0.06  PASS=no
+Mark 22   VEV_5400        horizon=10  n= 276  mean_t=  -0.020  cost= 1.000  net_t=  -1.020  t=  -0.63  hit= 0.26  PASS=no
+Mark 22   VEV_5500        horizon=20  n= 306  mean_t=  -0.041  cost= 1.000  net_t=  -1.041  t=  -1.69  hit= 0.12  PASS=no
+Mark 22   VEV_5500        horizon=50  n= 305  mean_t=  -0.048  cost= 1.000  net_t=  -1.048  t=  -1.44  hit= 0.17  PASS=no
+Mark 22   VEV_5400        horizon=20  n= 276  mean_t=  -0.071  cost= 1.000  net_t=  -1.071  t=  -1.52  hit= 0.33  PASS=no
+Mark 14   VEV_5400        horizon=20  n=  13  mean_t=  -0.077  cost= 1.000  net_t=  -1.077  t=  -0.29  hit= 0.54  PASS=no
+Mark 22   VEV_5400        horizon=50  n= 275  mean_t=  -0.133  cost= 1.000  net_t=  -1.133  t=  -1.83  hit= 0.32  PASS=no
+Mark 14   VEV_5500        horizon=10  n=   7  mean_t=  -0.143  cost= 1.000  net_t=  -1.143  t=  -1.55  hit= 0.00  PASS=no
+Mark 14   VEV_5500        horizon=50  n=   7  mean_t=  -0.143  cost= 1.000  net_t=  -1.143  t=  -1.00  hit= 0.14  PASS=no
+Mark 14   VEV_5400        horizon= 5  n=  13  mean_t=  -0.154  cost= 1.000  net_t=  -1.154  t=  -1.00  hit= 0.23  PASS=no
+Mark 14   VEV_5500        horizon=20  n=   7  mean_t=  -0.214  cost= 1.000  net_t=  -1.214  t=  -1.16  hit= 0.14  PASS=no
+Mark 14   VEV_5400        horizon=10  n=  13  mean_t=  -0.231  cost= 1.000  net_t=  -1.231  t=  -1.25  hit= 0.31  PASS=no
+Mark 14   VEV_5300        horizon=50  n=  30  mean_t=  +0.717  cost= 2.000  net_t=  -1.283  t=  +1.38  hit= 0.50  PASS=no
+Mark 22   VEV_5100        horizon=10  n=   3  mean_t=  +2.667  cost= 4.000  net_t=  -1.333  t=  +1.84  hit= 0.67  PASS=no
+Mark 14   VEV_5400        horizon=50  n=  13  mean_t=  -0.423  cost= 1.000  net_t=  -1.423  t=  -0.76  hit= 0.54  PASS=no
+Mark 01   VEV_5300        horizon=50  n= 132  mean_t=  +0.163  cost= 2.000  net_t=  -1.837  t=  +0.77  hit= 0.52  PASS=no
+Mark 22   VEV_5300        horizon= 5  n= 164  mean_t=  +0.085  cost= 2.000  net_t=  -1.915  t=  +1.44  hit= 0.35  PASS=no
+Mark 14   VEV_5300        horizon=10  n=  30  mean_t=  +0.067  cost= 2.000  net_t=  -1.933  t=  +0.31  hit= 0.37  PASS=no
+Mark 22   VEV_5300        horizon=10  n= 164  mean_t=  +0.037  cost= 2.000  net_t=  -1.963  t=  +0.43  hit= 0.38  PASS=no
+Mark 22   VEV_5300        horizon=20  n= 164  mean_t=  +0.006  cost= 2.000  net_t=  -1.994  t=  +0.05  hit= 0.41  PASS=no
+Mark 01   VEV_5300        horizon=20  n= 132  mean_t=  +0.000  cost= 2.000  net_t=  -2.000  t=  +0.00  hit= 0.43  PASS=no
+Mark 22   VEV_5100        horizon=20  n=   3  mean_t=  +2.000  cost= 4.000  net_t=  -2.000  t=  +0.79  hit= 0.67  PASS=no
+Mark 14   VEV_5300        horizon=20  n=  30  mean_t=  -0.017  cost= 2.000  net_t=  -2.017  t=  -0.06  hit= 0.40  PASS=no
+Mark 01   VEV_5200        horizon=10  n=  11  mean_t=  +0.955  cost= 3.000  net_t=  -2.045  t=  +1.63  hit= 0.64  PASS=no
+Mark 01   VEV_5300        horizon=10  n= 132  mean_t=  -0.049  cost= 2.000  net_t=  -2.049  t=  -0.52  hit= 0.36  PASS=no
+Mark 01   VEV_5300        horizon= 5  n= 132  mean_t=  -0.061  cost= 2.000  net_t=  -2.061  t=  -0.89  hit= 0.33  PASS=no
+Mark 14   VEV_5300        horizon= 5  n=  30  mean_t=  -0.133  cost= 2.000  net_t=  -2.133  t=  -1.14  hit= 0.20  PASS=no
+Mark 22   VEV_5300        horizon=50  n= 164  mean_t=  -0.235  cost= 2.000  net_t=  -2.235  t=  -1.20  hit= 0.39  PASS=no
+Mark 38   VEV_5300        horizon=20  n=   2  mean_t=  -0.250  cost= 2.000  net_t=  -2.250  t=  -0.14  hit= 0.50  PASS=no
+Mark 01   VEV_5200        horizon=20  n=  11  mean_t=  +0.727  cost= 3.000  net_t=  -2.273  t=  +0.70  hit= 0.73  PASS=no
+Mark 22   VEV_5100        horizon= 5  n=   3  mean_t=  +1.667  cost= 4.000  net_t=  -2.333  t=  +1.89  hit= 0.67  PASS=no
+Mark 01   VEV_5200        horizon= 5  n=  11  mean_t=  +0.318  cost= 3.000  net_t=  -2.682  t=  +0.94  hit= 0.64  PASS=no
+Mark 22   VEV_5200        horizon= 5  n=  47  mean_t=  +0.255  cost= 3.000  net_t=  -2.745  t=  +1.46  hit= 0.45  PASS=no
+Mark 38   VEV_5300        horizon=10  n=   2  mean_t=  -0.750  cost= 2.000  net_t=  -2.750  t=  -0.60  hit= 0.50  PASS=no
+Mark 14   VEV_5200        horizon=50  n=  33  mean_t=  +0.136  cost= 3.000  net_t=  -2.864  t=  +0.15  hit= 0.45  PASS=no
+Mark 22   VEV_5200        horizon=10  n=  47  mean_t=  +0.053  cost= 3.000  net_t=  -2.947  t=  +0.19  hit= 0.53  PASS=no
+Mark 38   VEV_5300        horizon= 5  n=   2  mean_t=  -1.000  cost= 2.000  net_t=  -3.000  t=   nan   hit= 0.00  PASS=no
+Mark 22   VEV_5200        horizon=20  n=  47  mean_t=  -0.043  cost= 3.000  net_t=  -3.043  t=  -0.09  hit= 0.51  PASS=no
+Mark 14   VEV_5200        horizon=20  n=  33  mean_t=  -0.061  cost= 3.000  net_t=  -3.061  t=  -0.10  hit= 0.39  PASS=no
+Mark 14   VEV_5200        horizon=10  n=  33  mean_t=  -0.242  cost= 3.000  net_t=  -3.242  t=  -0.75  hit= 0.30  PASS=no
+Mark 14   VEV_5200        horizon= 5  n=  33  mean_t=  -0.348  cost= 3.000  net_t=  -3.348  t=  -1.71  hit= 0.24  PASS=no
+Mark 22   VEV_5200        horizon=50  n=  47  mean_t=  -0.468  cost= 3.000  net_t=  -3.468  t=  -0.60  hit= 0.47  PASS=no
+Mark 22   VEV_5000        horizon=10  n=   3  mean_t=  +2.500  cost= 6.000  net_t=  -3.500  t=  +1.73  hit= 0.67  PASS=no
+Mark 22   VEV_5000        horizon=20  n=   3  mean_t=  +2.167  cost= 6.000  net_t=  -3.833  t=  +0.83  hit= 0.67  PASS=no
+Mark 22   VEV_5000        horizon= 5  n=   3  mean_t=  +1.833  cost= 6.000  net_t=  -4.167  t=  +1.57  hit= 0.67  PASS=no
+Mark 38   VEV_5300        horizon=50  n=   2  mean_t=  -2.250  cost= 2.000  net_t=  -4.250  t=  -1.29  hit= 0.00  PASS=no
+Mark 38   VEV_5200        horizon= 5  n=   3  mean_t=  -1.333  cost= 3.000  net_t=  -4.333  t=  -2.00  hit= 0.00  PASS=no
+Mark 38   VEV_5200        horizon=20  n=   3  mean_t=  -1.333  cost= 3.000  net_t=  -4.333  t=  -0.79  hit= 0.33  PASS=no
+Mark 38   VEV_5200        horizon=10  n=   3  mean_t=  -1.667  cost= 3.000  net_t=  -4.667  t=  -1.64  hit= 0.00  PASS=no
+Mark 38   VEV_5100        horizon= 5  n=   3  mean_t=  -1.667  cost= 4.000  net_t=  -5.667  t=  -1.89  hit= 0.00  PASS=no
+Mark 38   VEV_5100        horizon=20  n=   3  mean_t=  -2.000  cost= 4.000  net_t=  -6.000  t=  -0.79  hit= 0.33  PASS=no
+Mark 38   VEV_5100        horizon=10  n=   3  mean_t=  -2.667  cost= 4.000  net_t=  -6.667  t=  -1.84  hit= 0.00  PASS=no
+Mark 38   VEV_5200        horizon=50  n=   3  mean_t=  -3.667  cost= 3.000  net_t=  -6.667  t=  -1.51  hit= 0.00  PASS=no
+Mark 38   VEV_5000        horizon= 5  n=   3  mean_t=  -1.833  cost= 6.000  net_t=  -7.833  t=  -1.57  hit= 0.33  PASS=no
+Mark 38   VEV_5000        horizon=20  n=   3  mean_t=  -2.167  cost= 6.000  net_t=  -8.167  t=  -0.83  hit= 0.33  PASS=no
+Mark 38   VEV_5000        horizon=10  n=   3  mean_t=  -2.500  cost= 6.000  net_t=  -8.500  t=  -1.73  hit= 0.00  PASS=no
+Mark 38   VEV_5100        horizon=50  n=   3  mean_t=  -5.000  cost= 4.000  net_t=  -9.000  t=  -1.42  hit= 0.00  PASS=no
+Mark 22   VEV_4500        horizon=50  n=   3  mean_t=  +6.833  cost=16.000  net_t=  -9.167  t=  +2.04  hit= 1.00  PASS=no
+Mark 38   VEV_5000        horizon=50  n=   3  mean_t=  -5.667  cost= 6.000  net_t= -11.667  t=  -1.54  hit= 0.00  PASS=no
+Mark 22   VEV_4500        horizon=10  n=   3  mean_t=  +3.667  cost=16.000  net_t= -12.333  t=  +3.95  hit= 1.00  PASS=no
+Mark 22   VEV_4500        horizon= 5  n=   3  mean_t=  +3.167  cost=16.000  net_t= -12.833  t=  +1.82  hit= 0.67  PASS=no
+Mark 22   VEV_4500        horizon=20  n=   3  mean_t=  +3.167  cost=16.000  net_t= -12.833  t=  +1.49  hit= 0.67  PASS=no
+Mark 22   VEV_4000        horizon=50  n=   3  mean_t=  +7.333  cost=21.000  net_t= -13.667  t=  +2.13  hit= 1.00  PASS=no
+Mark 14   HYDROGEL_PACK   horizon=50  n=1002  mean_t=  +0.732  cost=16.000  net_t= -15.268  t=  +1.74  hit= 0.52  PASS=no
+Mark 14   HYDROGEL_PACK   horizon=20  n=1003  mean_t=  +0.182  cost=16.000  net_t= -15.818  t=  +0.67  hit= 0.49  PASS=no
+Mark 38   HYDROGEL_PACK   horizon=10  n=1022  mean_t=  +0.057  cost=16.000  net_t= -15.943  t=  +0.29  hit= 0.47  PASS=no
+Mark 14   HYDROGEL_PACK   horizon= 5  n=1003  mean_t=  +0.035  cost=16.000  net_t= -15.965  t=  +0.25  hit= 0.45  PASS=no
+Mark 38   HYDROGEL_PACK   horizon= 5  n=1022  mean_t=  -0.023  cost=16.000  net_t= -16.023  t=  -0.16  hit= 0.46  PASS=no
+Mark 14   HYDROGEL_PACK   horizon=10  n=1003  mean_t=  -0.038  cost=16.000  net_t= -16.038  t=  -0.19  hit= 0.47  PASS=no
+Mark 38   HYDROGEL_PACK   horizon=20  n=1022  mean_t=  -0.151  cost=16.000  net_t= -16.151  t=  -0.56  hit= 0.47  PASS=no
+Mark 22   HYDROGEL_PACK   horizon= 5  n=  19  mean_t=  -0.632  cost=16.000  net_t= -16.632  t=  -0.67  hit= 0.37  PASS=no
+Mark 38   HYDROGEL_PACK   horizon=50  n=1021  mean_t=  -0.658  cost=16.000  net_t= -16.658  t=  -1.58  hit= 0.47  PASS=no
+Mark 22   VEV_4000        horizon=10  n=   3  mean_t=  +4.167  cost=21.000  net_t= -16.833  t=  +5.74  hit= 1.00  PASS=no
+Mark 22   HYDROGEL_PACK   horizon=10  n=  19  mean_t=  -1.026  cost=16.000  net_t= -17.026  t=  -0.81  hit= 0.32  PASS=no
+Mark 22   VEV_4000        horizon= 5  n=   3  mean_t=  +3.667  cost=21.000  net_t= -17.333  t=  +1.69  hit= 0.67  PASS=no
+Mark 22   VEV_4000        horizon=20  n=   3  mean_t=  +3.667  cost=21.000  net_t= -17.333  t=  +2.52  hit= 1.00  PASS=no
+Mark 22   HYDROGEL_PACK   horizon=20  n=  19  mean_t=  -1.500  cost=16.000  net_t= -17.500  t=  -0.86  hit= 0.47  PASS=no
+Mark 38   VEV_4500        horizon= 5  n=   3  mean_t=  -3.167  cost=16.000  net_t= -19.167  t=  -1.82  hit= 0.00  PASS=no
+Mark 38   VEV_4500        horizon=20  n=   3  mean_t=  -3.167  cost=16.000  net_t= -19.167  t=  -1.49  hit= 0.33  PASS=no
+Mark 22   HYDROGEL_PACK   horizon=50  n=  19  mean_t=  -3.211  cost=16.000  net_t= -19.211  t=  -1.04  hit= 0.37  PASS=no
+Mark 38   VEV_4500        horizon=10  n=   3  mean_t=  -3.667  cost=16.000  net_t= -19.667  t=  -3.95  hit= 0.00  PASS=no
+Mark 38   VEV_4000        horizon=20  n= 440  mean_t=  +0.113  cost=21.000  net_t= -20.887  t=  +0.55  hit= 0.49  PASS=no
+Mark 38   VEV_4000        horizon= 5  n= 442  mean_t=  +0.034  cost=21.000  net_t= -20.966  t=  +0.30  hit= 0.43  PASS=no
+Mark 38   VEV_4000        horizon=10  n= 442  mean_t=  -0.002  cost=21.000  net_t= -21.002  t=  -0.02  hit= 0.44  PASS=no
+Mark 14   VEV_4000        horizon=50  n= 436  mean_t=  -0.011  cost=21.000  net_t= -21.011  t=  -0.04  hit= 0.47  PASS=no
+Mark 14   VEV_4000        horizon=10  n= 439  mean_t=  -0.026  cost=21.000  net_t= -21.026  t=  -0.17  hit= 0.46  PASS=no
+Mark 38   VEV_4000        horizon=50  n= 439  mean_t=  -0.039  cost=21.000  net_t= -21.039  t=  -0.12  hit= 0.47  PASS=no
+Mark 14   VEV_4000        horizon= 5  n= 439  mean_t=  -0.059  cost=21.000  net_t= -21.059  t=  -0.53  hit= 0.43  PASS=no
+Mark 14   VEV_4000        horizon=20  n= 437  mean_t=  -0.138  cost=21.000  net_t= -21.138  t=  -0.68  hit= 0.46  PASS=no
+Mark 38   VEV_4500        horizon=50  n=   3  mean_t=  -6.833  cost=16.000  net_t= -22.833  t=  -2.04  hit= 0.00  PASS=no
+Mark 01   HYDROGEL_PACK   horizon= 5  n=   0  mean_t=    nan   cost=16.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 01   HYDROGEL_PACK   horizon=10  n=   0  mean_t=    nan   cost=16.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 01   HYDROGEL_PACK   horizon=20  n=   0  mean_t=    nan   cost=16.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 01   HYDROGEL_PACK   horizon=50  n=   0  mean_t=    nan   cost=16.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 01   VEV_4000        horizon= 5  n=   0  mean_t=    nan   cost=21.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 01   VEV_4000        horizon=10  n=   0  mean_t=    nan   cost=21.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 01   VEV_4000        horizon=20  n=   0  mean_t=    nan   cost=21.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 01   VEV_4000        horizon=50  n=   0  mean_t=    nan   cost=21.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 01   VEV_4500        horizon= 5  n=   0  mean_t=    nan   cost=16.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 01   VEV_4500        horizon=10  n=   0  mean_t=    nan   cost=16.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 01   VEV_4500        horizon=20  n=   0  mean_t=    nan   cost=16.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 01   VEV_4500        horizon=50  n=   0  mean_t=    nan   cost=16.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 01   VEV_5000        horizon= 5  n=   0  mean_t=    nan   cost= 6.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 01   VEV_5000        horizon=10  n=   0  mean_t=    nan   cost= 6.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 01   VEV_5000        horizon=20  n=   0  mean_t=    nan   cost= 6.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 01   VEV_5000        horizon=50  n=   0  mean_t=    nan   cost= 6.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 01   VEV_5100        horizon= 5  n=   0  mean_t=    nan   cost= 4.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 01   VEV_5100        horizon=10  n=   0  mean_t=    nan   cost= 4.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 01   VEV_5100        horizon=20  n=   0  mean_t=    nan   cost= 4.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 01   VEV_5100        horizon=50  n=   0  mean_t=    nan   cost= 4.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 14   VEV_4500        horizon= 5  n=   0  mean_t=    nan   cost=16.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 14   VEV_4500        horizon=10  n=   0  mean_t=    nan   cost=16.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 14   VEV_4500        horizon=20  n=   0  mean_t=    nan   cost=16.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 14   VEV_4500        horizon=50  n=   0  mean_t=    nan   cost=16.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 14   VEV_5000        horizon= 5  n=   0  mean_t=    nan   cost= 6.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 14   VEV_5000        horizon=10  n=   0  mean_t=    nan   cost= 6.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 14   VEV_5000        horizon=20  n=   0  mean_t=    nan   cost= 6.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 14   VEV_5000        horizon=50  n=   0  mean_t=    nan   cost= 6.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 14   VEV_5100        horizon= 5  n=   0  mean_t=    nan   cost= 4.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 14   VEV_5100        horizon=10  n=   0  mean_t=    nan   cost= 4.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 14   VEV_5100        horizon=20  n=   0  mean_t=    nan   cost= 4.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 14   VEV_5100        horizon=50  n=   0  mean_t=    nan   cost= 4.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 14   VEV_6000        horizon= 5  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 14   VEV_6000        horizon=10  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 14   VEV_6000        horizon=20  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 14   VEV_6000        horizon=50  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 14   VEV_6500        horizon= 5  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 14   VEV_6500        horizon=10  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 14   VEV_6500        horizon=20  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 14   VEV_6500        horizon=50  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 38   VEV_5400        horizon= 5  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 38   VEV_5400        horizon=10  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 38   VEV_5400        horizon=20  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 38   VEV_5400        horizon=50  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 38   VEV_5500        horizon= 5  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 38   VEV_5500        horizon=10  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 38   VEV_5500        horizon=20  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 38   VEV_5500        horizon=50  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 38   VEV_6000        horizon= 5  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 38   VEV_6000        horizon=10  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 38   VEV_6000        horizon=20  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 38   VEV_6000        horizon=50  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 38   VEV_6500        horizon= 5  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 38   VEV_6500        horizon=10  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 38   VEV_6500        horizon=20  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 38   VEV_6500        horizon=50  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   HYDROGEL_PACK   horizon= 5  n=   0  mean_t=    nan   cost=16.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   HYDROGEL_PACK   horizon=10  n=   0  mean_t=    nan   cost=16.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   HYDROGEL_PACK   horizon=20  n=   0  mean_t=    nan   cost=16.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   HYDROGEL_PACK   horizon=50  n=   0  mean_t=    nan   cost=16.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   VEV_4000        horizon= 5  n=   0  mean_t=    nan   cost=21.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   VEV_4000        horizon=10  n=   0  mean_t=    nan   cost=21.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   VEV_4000        horizon=20  n=   0  mean_t=    nan   cost=21.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   VEV_4000        horizon=50  n=   0  mean_t=    nan   cost=21.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   VEV_4500        horizon= 5  n=   0  mean_t=    nan   cost=16.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   VEV_4500        horizon=10  n=   0  mean_t=    nan   cost=16.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   VEV_4500        horizon=20  n=   0  mean_t=    nan   cost=16.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   VEV_4500        horizon=50  n=   0  mean_t=    nan   cost=16.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   VEV_5000        horizon= 5  n=   0  mean_t=    nan   cost= 6.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   VEV_5000        horizon=10  n=   0  mean_t=    nan   cost= 6.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   VEV_5000        horizon=20  n=   0  mean_t=    nan   cost= 6.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   VEV_5000        horizon=50  n=   0  mean_t=    nan   cost= 6.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   VEV_5100        horizon= 5  n=   0  mean_t=    nan   cost= 4.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   VEV_5100        horizon=10  n=   0  mean_t=    nan   cost= 4.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   VEV_5100        horizon=20  n=   0  mean_t=    nan   cost= 4.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   VEV_5100        horizon=50  n=   0  mean_t=    nan   cost= 4.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   VEV_5200        horizon= 5  n=   0  mean_t=    nan   cost= 3.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   VEV_5200        horizon=10  n=   0  mean_t=    nan   cost= 3.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   VEV_5200        horizon=20  n=   0  mean_t=    nan   cost= 3.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   VEV_5200        horizon=50  n=   0  mean_t=    nan   cost= 3.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   VEV_5300        horizon= 5  n=   0  mean_t=    nan   cost= 2.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   VEV_5300        horizon=10  n=   0  mean_t=    nan   cost= 2.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   VEV_5300        horizon=20  n=   0  mean_t=    nan   cost= 2.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   VEV_5300        horizon=50  n=   0  mean_t=    nan   cost= 2.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   VEV_5400        horizon= 5  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   VEV_5400        horizon=10  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   VEV_5400        horizon=20  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   VEV_5400        horizon=50  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   VEV_5500        horizon= 5  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   VEV_5500        horizon=10  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   VEV_5500        horizon=20  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   VEV_5500        horizon=50  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   VEV_6000        horizon= 5  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   VEV_6000        horizon=10  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   VEV_6000        horizon=20  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   VEV_6000        horizon=50  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   VEV_6500        horizon= 5  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   VEV_6500        horizon=10  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   VEV_6500        horizon=20  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 49   VEV_6500        horizon=50  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   HYDROGEL_PACK   horizon= 5  n=   0  mean_t=    nan   cost=16.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   HYDROGEL_PACK   horizon=10  n=   0  mean_t=    nan   cost=16.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   HYDROGEL_PACK   horizon=20  n=   0  mean_t=    nan   cost=16.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   HYDROGEL_PACK   horizon=50  n=   0  mean_t=    nan   cost=16.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   VEV_4000        horizon= 5  n=   0  mean_t=    nan   cost=21.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   VEV_4000        horizon=10  n=   0  mean_t=    nan   cost=21.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   VEV_4000        horizon=20  n=   0  mean_t=    nan   cost=21.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   VEV_4000        horizon=50  n=   0  mean_t=    nan   cost=21.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   VEV_4500        horizon= 5  n=   0  mean_t=    nan   cost=16.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   VEV_4500        horizon=10  n=   0  mean_t=    nan   cost=16.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   VEV_4500        horizon=20  n=   0  mean_t=    nan   cost=16.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   VEV_4500        horizon=50  n=   0  mean_t=    nan   cost=16.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   VEV_5000        horizon= 5  n=   0  mean_t=    nan   cost= 6.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   VEV_5000        horizon=10  n=   0  mean_t=    nan   cost= 6.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   VEV_5000        horizon=20  n=   0  mean_t=    nan   cost= 6.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   VEV_5000        horizon=50  n=   0  mean_t=    nan   cost= 6.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   VEV_5100        horizon= 5  n=   0  mean_t=    nan   cost= 4.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   VEV_5100        horizon=10  n=   0  mean_t=    nan   cost= 4.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   VEV_5100        horizon=20  n=   0  mean_t=    nan   cost= 4.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   VEV_5100        horizon=50  n=   0  mean_t=    nan   cost= 4.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   VEV_5200        horizon= 5  n=   0  mean_t=    nan   cost= 3.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   VEV_5200        horizon=10  n=   0  mean_t=    nan   cost= 3.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   VEV_5200        horizon=20  n=   0  mean_t=    nan   cost= 3.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   VEV_5200        horizon=50  n=   0  mean_t=    nan   cost= 3.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   VEV_5300        horizon= 5  n=   0  mean_t=    nan   cost= 2.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   VEV_5300        horizon=10  n=   0  mean_t=    nan   cost= 2.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   VEV_5300        horizon=20  n=   0  mean_t=    nan   cost= 2.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   VEV_5300        horizon=50  n=   0  mean_t=    nan   cost= 2.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   VEV_5400        horizon= 5  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   VEV_5400        horizon=10  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   VEV_5400        horizon=20  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   VEV_5400        horizon=50  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   VEV_5500        horizon= 5  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   VEV_5500        horizon=10  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   VEV_5500        horizon=20  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   VEV_5500        horizon=50  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   VEV_6000        horizon= 5  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   VEV_6000        horizon=10  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   VEV_6000        horizon=20  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   VEV_6000        horizon=50  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   VEV_6500        horizon= 5  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   VEV_6500        horizon=10  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   VEV_6500        horizon=20  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 55   VEV_6500        horizon=50  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   HYDROGEL_PACK   horizon= 5  n=   0  mean_t=    nan   cost=16.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   HYDROGEL_PACK   horizon=10  n=   0  mean_t=    nan   cost=16.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   HYDROGEL_PACK   horizon=20  n=   0  mean_t=    nan   cost=16.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   HYDROGEL_PACK   horizon=50  n=   0  mean_t=    nan   cost=16.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   VEV_4000        horizon= 5  n=   0  mean_t=    nan   cost=21.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   VEV_4000        horizon=10  n=   0  mean_t=    nan   cost=21.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   VEV_4000        horizon=20  n=   0  mean_t=    nan   cost=21.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   VEV_4000        horizon=50  n=   0  mean_t=    nan   cost=21.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   VEV_4500        horizon= 5  n=   0  mean_t=    nan   cost=16.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   VEV_4500        horizon=10  n=   0  mean_t=    nan   cost=16.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   VEV_4500        horizon=20  n=   0  mean_t=    nan   cost=16.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   VEV_4500        horizon=50  n=   0  mean_t=    nan   cost=16.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   VEV_5000        horizon= 5  n=   0  mean_t=    nan   cost= 6.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   VEV_5000        horizon=10  n=   0  mean_t=    nan   cost= 6.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   VEV_5000        horizon=20  n=   0  mean_t=    nan   cost= 6.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   VEV_5000        horizon=50  n=   0  mean_t=    nan   cost= 6.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   VEV_5100        horizon= 5  n=   0  mean_t=    nan   cost= 4.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   VEV_5100        horizon=10  n=   0  mean_t=    nan   cost= 4.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   VEV_5100        horizon=20  n=   0  mean_t=    nan   cost= 4.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   VEV_5100        horizon=50  n=   0  mean_t=    nan   cost= 4.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   VEV_5200        horizon= 5  n=   0  mean_t=    nan   cost= 3.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   VEV_5200        horizon=10  n=   0  mean_t=    nan   cost= 3.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   VEV_5200        horizon=20  n=   0  mean_t=    nan   cost= 3.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   VEV_5200        horizon=50  n=   0  mean_t=    nan   cost= 3.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   VEV_5300        horizon= 5  n=   0  mean_t=    nan   cost= 2.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   VEV_5300        horizon=10  n=   0  mean_t=    nan   cost= 2.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   VEV_5300        horizon=20  n=   0  mean_t=    nan   cost= 2.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   VEV_5300        horizon=50  n=   0  mean_t=    nan   cost= 2.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   VEV_5400        horizon= 5  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   VEV_5400        horizon=10  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   VEV_5400        horizon=20  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   VEV_5400        horizon=50  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   VEV_5500        horizon= 5  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   VEV_5500        horizon=10  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   VEV_5500        horizon=20  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   VEV_5500        horizon=50  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   VEV_6000        horizon= 5  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   VEV_6000        horizon=10  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   VEV_6000        horizon=20  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   VEV_6000        horizon=50  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   VEV_6500        horizon= 5  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   VEV_6500        horizon=10  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   VEV_6500        horizon=20  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+Mark 67   VEV_6500        horizon=50  n=   0  mean_t=    nan   cost= 1.000  net_t=    nan   t=   nan   hit=  nan   PASS=no
+
+=== VERDICT ===
+NO PASS — close bot-following

@@ -965,6 +965,39 @@ class HydrogelStrategy(MarketMakingStrategy):
             self.sell(int(price), to_sell)
 
 
+class VelvetfruitEMAStrategy(MarketMakingStrategy, StatefulStrategy[dict[str, float | None]]):
+    FAST_WINDOW = 20
+    SLOW_WINDOW = 200
+    LEAN_K = 0.5
+
+    def __init__(self, symbol: Symbol, limit: int) -> None:
+        super().__init__(symbol, limit)
+        self.ema_fast: float | None = None
+        self.ema_slow: float | None = None
+
+    def get_true_value(self, state: TradingState) -> float:
+        mid = self.get_mid_price(state, self.symbol)
+
+        if self.ema_fast is None:
+            self.ema_fast = mid
+            self.ema_slow = mid
+        else:
+            alpha_f = 2.0 / (self.FAST_WINDOW + 1)
+            alpha_s = 2.0 / (self.SLOW_WINDOW + 1)
+            self.ema_fast = alpha_f * mid + (1.0 - alpha_f) * self.ema_fast
+            self.ema_slow = alpha_s * mid + (1.0 - alpha_s) * self.ema_slow
+
+        divergence = self.ema_fast - self.ema_slow
+        return mid + self.LEAN_K * divergence
+
+    def save(self) -> dict[str, float | None]:
+        return {"ema_fast": self.ema_fast, "ema_slow": self.ema_slow}
+
+    def load(self, data: dict[str, float | None]) -> None:
+        self.ema_fast = data.get("ema_fast")
+        self.ema_slow = data.get("ema_slow")
+
+
 class VelvetfruitStrategy(MarketMakingStrategy):
     """Neutral mid-price MM. Backtests at 0 (passive orders never fill in
     historical data). Kept as safe fallback — does not accumulate directional
@@ -1015,17 +1048,18 @@ class Trader:
 
         self.strategies: dict[Symbol, Strategy] = {
             "HYDROGEL_PACK": HydrogelStrategy("HYDROGEL_PACK", limits["HYDROGEL_PACK"]),
-            "VELVETFRUIT_EXTRACT": VelvetfruitStrategy(
+            "VELVETFRUIT_EXTRACT": VelvetfruitEMAStrategy(
                 "VELVETFRUIT_EXTRACT", limits["VELVETFRUIT_EXTRACT"]
             ),
         }
 
         for strike in STRIKES:
             sym = f"VEV_{strike}"
-            if sym == "VEV_4000":
+            if sym == "VEV_4000" or sym == "VEV_5200" or sym == "VEV_5300" or sym == "VEV_5400":
                 # Inside-spread MM with hard position bands. Wide-spread, deep-ITM
                 self.strategies[sym] = Vev4000MMStrategy(sym, limits[sym])
                 continue
+            """
             cfg = mark14_config.get(sym)
             if cfg is not None:
                 self.strategies[sym] = Mark14FollowerStrategy(
@@ -1040,7 +1074,7 @@ class Trader:
                     carry_window=100, carry_threshold=0.020,
                     autocorr_window=30, autocorr_threshold=-0.05,
                 )
-
+            """
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
         orders: dict[Symbol, list[Order]] = {}
         conversions = 0
