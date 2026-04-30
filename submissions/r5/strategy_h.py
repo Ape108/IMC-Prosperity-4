@@ -561,20 +561,33 @@ class R5PairTradeStrategy(StatefulStrategy[dict[str, Any]]):
 #   MEDIUM — GALAXY_SOUNDS_SOLAR_FLAMES (-23,644), UV_VISOR_MAGENTA (-22,796),
 #            OXYGEN_SHAKE_MINT (-14,704), OXYGEN_SHAKE_GARLIC (-9,630)
 # Expected swing: +185k conservative / +115k default. See CLAUDE.md decision log.
+#
+# UV_VISOR dive (2026-04-30): EG kill criterion fired — no pair p < 0.05 across all 3 days.
+# ORANGE (-526 conservative), RED (-3,893), YELLOW (-5,625) dropped from MEDIUM_TIER.
+# AMBER (+7,878 conservative) retained at width=2. Group exhausted.
+#
+# PANEL dive (2026-04-30): EG kill criterion fired — no pair p < 0.05 across all 3 days.
+# All pair trade variants confirmed negative in backtest. PANEL_2X2 dropped:
+# conservative -4,433 (Days 3+4 systematic losses). 1X4 and 2X4 retained at width=1.
+#
+# SLEEP_POD dive (2026-04-30): EG kill criterion fired (0/6 pairs cointegrated).
+# SUEDE width=2 rescues conservative (+4,438 delta, −357 → +4,081). NYLON also improves
+# at width=2 (+1,724 delta). POLYESTER (best −1,601 conservative) and COTTON (best −2,134)
+# dropped — net-negative at every tested width. Per-product wiring in Group Sleep Pod block.
 TIGHT_TIER = [
     "ROBOT_VACUUMING", "ROBOT_MOPPING", "ROBOT_DISHES", "ROBOT_LAUNDRY", "ROBOT_IRONING",
     "TRANSLATOR_ASTRO_BLACK", "TRANSLATOR_ECLIPSE_CHARCOAL", "TRANSLATOR_VOID_BLUE",
     "MICROCHIP_CIRCLE", "MICROCHIP_OVAL", "MICROCHIP_SQUARE", "MICROCHIP_RECTANGLE",
     "MICROCHIP_TRIANGLE",
-    "SLEEP_POD_SUEDE", "SLEEP_POD_POLYESTER", "SLEEP_POD_NYLON", "SLEEP_POD_COTTON",
-    "PANEL_2X2", "PANEL_1X4", "PANEL_2X4",
+    "SLEEP_POD_NYLON", "SLEEP_POD_SUEDE",
+    "PANEL_1X4", "PANEL_2X4",
 ]
 
 MEDIUM_TIER = [
     "OXYGEN_SHAKE_MORNING_BREATH", "OXYGEN_SHAKE_EVENING_BREATH", "OXYGEN_SHAKE_CHOCOLATE",
     "PEBBLES_XS", "PEBBLES_S", "PEBBLES_M", "PEBBLES_L", "PEBBLES_XL",
-    "UV_VISOR_YELLOW", "UV_VISOR_AMBER", "UV_VISOR_ORANGE", "UV_VISOR_RED",
-    "GALAXY_SOUNDS_DARK_MATTER", "GALAXY_SOUNDS_BLACK_HOLES", "GALAXY_SOUNDS_PLANETARY_RINGS",
+    "UV_VISOR_AMBER",  # YELLOW/ORANGE/RED dropped: EG kill criterion fired 2026-04-30
+    "GALAXY_SOUNDS_DARK_MATTER", "GALAXY_SOUNDS_BLACK_HOLES",
     "GALAXY_SOUNDS_SOLAR_WINDS",
 ]
 
@@ -600,6 +613,8 @@ class Trader:
                 continue  # per-product widths wired in Group Robots block below
             if sym.startswith("MICROCHIP_"):
                 continue  # per-product widths wired in Group Microchip block below
+            if sym.startswith("SLEEP_POD_"):
+                continue  # per-product widths wired in Group Sleep Pod block below
             self.strategies[sym] = R5BaseMMStrategy(sym, LIMIT, width=1)
 
         # ── Medium tier (width=2) ────────────────────────────────────────
@@ -608,6 +623,8 @@ class Trader:
                 self.strategies[sym] = R5AutocorrMMStrategy(sym, LIMIT, width=2, alpha=0.118)
             elif sym == "OXYGEN_SHAKE_CHOCOLATE":
                 self.strategies[sym] = R5AutocorrMMStrategy(sym, LIMIT, width=2, alpha=0.082)
+            elif sym == "GALAXY_SOUNDS_PLANETARY_RINGS":
+                self.strategies[sym] = R5BaseMMStrategy(sym, LIMIT, width=3)
             elif sym.startswith("PEBBLES_"):
                 continue # PEBBLES pairs and skew wired in PEBBLES pair trade and skew blocks below
             else:
@@ -653,6 +670,12 @@ class Trader:
         # rectangle_widen variant: +2,824 default / +2,966 conservative vs width=1 baseline.
         # Lead-lag CIRCLE→OVAL angle dropped (all three k values net-negative; see eda_gaps.md).
         self.strategies["MICROCHIP_RECTANGLE"] = R5BaseMMStrategy("MICROCHIP_RECTANGLE", LIMIT, width=2)
+
+        # Group Sleep Pod — width=2 per CLAUDE.md SLEEP_POD dive (2026-04-30)
+        # EG screen: 0/6 pairs cointegrated. Width=2 rescues SUEDE (+4,438 delta conservative)
+        # and improves NYLON (+1,724 delta). POLYESTER/COTTON dropped (net-negative at all widths).
+        self.strategies["SLEEP_POD_NYLON"] = R5BaseMMStrategy("SLEEP_POD_NYLON", LIMIT, width=2)
+        self.strategies["SLEEP_POD_SUEDE"] = R5BaseMMStrategy("SLEEP_POD_SUEDE", LIMIT, width=2)
 
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
         orders: dict[Symbol, list[Order]] = {}
