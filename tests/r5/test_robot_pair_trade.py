@@ -175,7 +175,17 @@ def test_exit_on_z_revert_to_below_z_exit():
     # Flatten: buy A 10 at ask=103, sell B 10 at bid=99
     assert ("A", 103) in by_symbol and by_symbol[("A", 103)] == +10
     assert ("B", 99) in by_symbol and by_symbol[("B", 99)] == -10
-    assert s.entry_tick is None  # cleared after exit
+    # entry_tick stays set during the exit attempt — fills haven't confirmed yet
+    assert s.entry_tick == 400
+
+    # Next tick with positions confirmed flat → entry_tick cleared
+    fills_confirmed = make_state(
+        {"A": (101, 5, 103, 5), "B": (99, 5, 101, 5)},
+        positions={"A": 0, "B": 0},
+        timestamp=600,
+    )
+    s.run(fills_confirmed)
+    assert s.entry_tick is None
 
 
 def test_no_exit_when_still_above_z_exit():
@@ -232,6 +242,64 @@ def test_max_hold_ticks_forces_exit():
     by_symbol = {(o.symbol, o.price): o.quantity for o in orders}
     assert ("A", 111) in by_symbol and by_symbol[("A", 111)] == +10
     assert ("B", 99) in by_symbol and by_symbol[("B", 99)] == -10
+    # entry_tick stays set during the exit attempt — fills haven't confirmed yet
+    assert s.entry_tick == 400
+
+    # Next tick with positions confirmed flat → entry_tick cleared
+    fills_confirmed = make_state(
+        {"A": (109, 5, 111, 5), "B": (99, 5, 101, 5)},
+        positions={"A": 0, "B": 0},
+        timestamp=900,
+    )
+    s.run(fills_confirmed)
+    assert s.entry_tick is None
+
+
+def test_partial_fill_exit_does_not_crash_on_residual_position():
+    """
+    Regression: under the old behavior, exit cleared entry_tick eagerly. If exit orders
+    only partially filled, the next tick would have a residual position with entry_tick=None,
+    triggering the invariant assertion. Under the fix, entry_tick stays set until positions
+    actually reach zero — partial-fill exit retries cleanly.
+    """
+    s = R5PairTradeStrategy(
+        symbol_a="A", symbol_b="B", limit=10,
+        window=3, z_entry=1.0, z_exit=0.5, max_hold_ticks=500,
+    )
+    flat = make_state({"A": (99, 5, 101, 5), "B": (99, 5, 101, 5)})
+    s.run(flat); s.run(flat); s.run(flat)
+
+    # Entry at timestamp 400
+    spike = make_state({"A": (109, 5, 111, 5), "B": (99, 5, 101, 5)}, timestamp=400)
+    s.run(spike)
+    assert s.entry_tick == 400
+
+    # Z reverts; exit fires with positions still at full
+    revert = make_state(
+        {"A": (101, 5, 103, 5), "B": (99, 5, 101, 5)},
+        positions={"A": -10, "B": +10},
+        timestamp=500,
+    )
+    s.run(revert)
+    assert s.entry_tick == 400  # not cleared during exit attempt
+
+    # Simulate partial fill: A flattened to -2, B fully flat
+    partial = make_state(
+        {"A": (101, 5, 103, 5), "B": (99, 5, 101, 5)},
+        positions={"A": -2, "B": 0},
+        timestamp=600,
+    )
+    # Should NOT raise the invariant assertion — entry_tick is still 400
+    orders, _ = s.run(partial)
+    assert s.entry_tick == 400  # still tracking the original entry
+
+    # Final fill confirms flat → entry_tick clears
+    final = make_state(
+        {"A": (101, 5, 103, 5), "B": (99, 5, 101, 5)},
+        positions={"A": 0, "B": 0},
+        timestamp=700,
+    )
+    s.run(final)
     assert s.entry_tick is None
 
 
