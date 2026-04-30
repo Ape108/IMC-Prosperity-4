@@ -356,14 +356,22 @@ class R5PairTradeStrategy(StatefulStrategy[dict[str, Any]]):
         pos_b = state.position.get(self.symbol_b, 0)
         is_flat = pos_a == 0 and pos_b == 0
 
+        # entry_tick is live iff we hold the pair. Reconcile at top of tick so
+        # partial-fill exits don't strand the timer — residual position keeps it,
+        # and a confirmed-flat tick clears it.
+        if is_flat:
+            self.entry_tick = None
+        elif self.entry_tick is None:
+            # Cold-start with a carried position (e.g. --carry without --persist).
+            # Best we can do is start the hold timer now.
+            self.entry_tick = state.timestamp
+
         # Time-stop is a risk-management override: fires regardless of z computability
         if not is_flat:
-            assert self.entry_tick is not None, "Holding position without entry_tick — invariant violation"
             held_delta = state.timestamp - self.entry_tick
             if held_delta > self.max_hold_ticks * 100:
                 self._flatten(state, self.symbol_a, pos_a)
                 self._flatten(state, self.symbol_b, pos_b)
-                self.entry_tick = None
                 return
 
         if len(self.spread_history) < self.window:
@@ -390,7 +398,6 @@ class R5PairTradeStrategy(StatefulStrategy[dict[str, Any]]):
             if abs(z) < self.z_exit:
                 self._flatten(state, self.symbol_a, pos_a)
                 self._flatten(state, self.symbol_b, pos_b)
-                self.entry_tick = None
 
     def save(self) -> dict[str, Any]:
         return {"spread_history": list(self.spread_history), "entry_tick": self.entry_tick}
@@ -459,7 +466,8 @@ class Trader:
                     self.strategies[sym] = R5BaseMMStrategy(sym, LIMIT, width=1)
 
         def pair_trade_laundry_vacuuming():
-            """Error: AssertionError: Holding position without entry_tick — invariant violation
+            """
+                ROBOT_LAUNDRY                    4503.00   -7449.00   -6712.00   -9658.00
             """
             for sym in SYMBOLS:
                 if sym in ("ROBOT_LAUNDRY", "ROBOT_VACUUMING"):
@@ -494,7 +502,7 @@ class Trader:
             for sym in SYMBOLS:
                 self.strategies[sym] = R5BaseMMStrategy(sym, LIMIT, width=2)
 
-        width_tier_2()
+        pair_trade_laundry_vacuuming()
 
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
         orders: dict[Symbol, list[Order]] = {}

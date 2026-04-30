@@ -465,6 +465,12 @@ class Trader:
         # Corr overlays (lag-1 partner lean) — active for baseline comparison
         
         def corr():
+            """SNACKPACK_CHOCOLATE             -6048.00    -787.00    5886.00    -949.00
+                SNACKPACK_PISTACHIO            -11601.00  -10513.00  -15782.00  -37896.00
+                SNACKPACK_RASPBERRY             -7061.00   -6431.00  -18146.00  -31638.00
+                SNACKPACK_STRAWBERRY           -13596.00  -21576.00  -22633.00  -57805.00
+                SNACKPACK_VANILLA               -8260.00     909.50  -13745.00  -21095.50
+            """
             self.strategies["SNACKPACK_RASPBERRY"] = R5CorrMMStrategy(
                 "SNACKPACK_RASPBERRY", LIMIT, width=3, partner_symbol="SNACKPACK_STRAWBERRY", beta=0.462,
             )
@@ -482,6 +488,19 @@ class Trader:
             )
 
         def mm():
+            """SNACKPACK_CHOCOLATE              2177.00    6297.50    2907.00   11381.50
+                SNACKPACK_PISTACHIO              1999.00    2239.00     315.00    4553.00
+                SNACKPACK_RASPBERRY              1660.00    3409.50    2974.00    8043.50
+                SNACKPACK_STRAWBERRY              121.00   -1800.00     582.00   -1097.00
+                SNACKPACK_VANILLA               -1240.00   -2963.50     386.00   -3817.50
+                
+                w/ queue-penetration 0
+                SNACKPACK_CHOCOLATE                 7.00    3402.50     577.00    3986.50
+                SNACKPACK_PISTACHIO              -171.00    -656.00   -2015.00   -2842.00
+                SNACKPACK_RASPBERRY              -510.00     514.50     644.00     648.50
+                SNACKPACK_STRAWBERRY            -2049.00   -4761.00   -1944.00   -8754.00
+                SNACKPACK_VANILLA               -3410.00   -5858.50   -1944.00  -11212.50
+            """ 
             self.strategies["SNACKPACK_RASPBERRY"] = R5BaseMMStrategy("SNACKPACK_RASPBERRY", LIMIT, width=3)
             self.strategies["SNACKPACK_STRAWBERRY"] = R5BaseMMStrategy("SNACKPACK_STRAWBERRY", LIMIT, width=3)
             self.strategies["SNACKPACK_CHOCOLATE"] = R5BaseMMStrategy("SNACKPACK_CHOCOLATE", LIMIT, width=3)
@@ -489,6 +508,12 @@ class Trader:
             self.strategies["SNACKPACK_PISTACHIO"] = R5BaseMMStrategy("SNACKPACK_PISTACHIO", LIMIT, width=3)
 
         def tick_lean():
+            """SNACKPACK_CHOCOLATE            -38598.00  -34968.00  -29685.00 -103251.00
+                SNACKPACK_PISTACHIO              3756.00   -5544.00   -2406.00   -4194.00
+                SNACKPACK_RASPBERRY            -67717.00  -79606.00  -78768.00 -226091.00
+                SNACKPACK_STRAWBERRY           -62213.00  -49573.00  -45283.00 -157069.00
+                SNACKPACK_VANILLA              -28511.00  -25201.00  -24455.00  -78167.00
+            """
             # beta signs: negative for anti-correlated pairs (corr ~ -0.92), positive for co-moving (PIST/STRAW corr ~ +0.91)
             self.strategies["SNACKPACK_RASPBERRY"] = R5TickResidualMMStrategy(
                 "SNACKPACK_RASPBERRY", LIMIT, width=3, partner_symbol="SNACKPACK_STRAWBERRY", beta=-0.462,
@@ -507,6 +532,19 @@ class Trader:
             )
 
         def basket_cap():
+            """SNACKPACK_CHOCOLATE              2177.00    6297.50    2907.00   11381.50
+                SNACKPACK_PISTACHIO              1999.00    2239.00     315.00    4553.00
+                SNACKPACK_RASPBERRY              1660.00    3409.50    2974.00    8043.50
+                SNACKPACK_STRAWBERRY              121.00   -1800.00     582.00   -1097.00
+                SNACKPACK_VANILLA               -1240.00   -2963.50     386.00   -3817.50
+                
+                w/ queue-penetration 0
+                SSNACKPACK_CHOCOLATE                 7.00    3402.50     577.00    3986.50
+                SNACKPACK_PISTACHIO              -171.00    -656.00   -2015.00   -2842.00
+                SNACKPACK_RASPBERRY              -510.00     514.50     644.00     648.50
+                SNACKPACK_STRAWBERRY            -2049.00   -4761.00   -1944.00   -8754.00
+                SNACKPACK_VANILLA               -3410.00   -5858.50   -1944.00  -11212.50
+            """
             self.strategies["SNACKPACK_CHOCOLATE"] = R5BasketCapMMStrategy(
                 "SNACKPACK_CHOCOLATE", LIMIT, width=3,
                 leg_sign=+1, partners={"SNACKPACK_VANILLA": -1},
@@ -528,7 +566,7 @@ class Trader:
                 leg_sign=+1, partners={"SNACKPACK_RASPBERRY": -1, "SNACKPACK_STRAWBERRY": +1},
             )
 
-        mm()
+        basket_cap()
             
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
         orders: dict[Symbol, list[Order]] = {}
