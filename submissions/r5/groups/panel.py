@@ -29,7 +29,7 @@ from datamodel import Listing, Observation, Order, OrderDepth, ProsperityEncoder
 type JSON = dict[str, Any] | list[Any] | str | int | float | bool | None
 
 DATASET_DIR = Path(__file__).resolve().parents[3] / "datasets" / "round5"
-SYMBOLS = ["PANEL_1X4", "PANEL_2X4", "PANEL_2X2"]
+SYMBOLS = ["PANEL_1X2", "PANEL_1X4", "PANEL_2X4", "PANEL_2X2", "PANEL_4X4"]
 LIMIT = 10
 
 
@@ -439,7 +439,7 @@ class Trader:
             )
             self.strategies["PANEL_1X4"] = R5BaseMMStrategy("PANEL_1X4", LIMIT, width=1)
 
-        drop_2x2()  # Shipped: 1X4 + 2X4 only; 2X2 dropped (conservative alpha -4,433; days 3+4 systematic losses)
+        baseline()
 
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
         orders: dict[Symbol, list[Order]] = {}

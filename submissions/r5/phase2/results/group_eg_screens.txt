@@ -1,0 +1,65 @@
+==========================================================================================
+Entries #5 + #8 + #15 — Within-group EG screens for unrun groups
+==========================================================================================
+  Threshold: pass = EG p < 0.05 on ALL 3 days.
+
+  Group: MICROCHIP
+  Pair                                    D2 p     D3 p     D4 p   pass_all
+  CIRCLE <-> OVAL                       0.0076   0.2097   0.1010         no
+  CIRCLE <-> SQUARE                     0.0688   0.2721   0.7266         no
+  CIRCLE <-> RECTANGLE                  0.0224   0.2964   0.9070         no
+  CIRCLE <-> TRIANGLE                   0.0428   0.6182   0.0482         no
+  OVAL <-> SQUARE                       0.4625   0.3110   0.4631         no
+  OVAL <-> RECTANGLE                    0.4077   0.4942   0.6554         no
+  OVAL <-> TRIANGLE                     0.4254   0.8749   0.0009         no
+  SQUARE <-> RECTANGLE                  0.5556   0.1754   0.7675         no
+  SQUARE <-> TRIANGLE                   0.8227   0.6116   0.4702         no
+  RECTANGLE <-> TRIANGLE                0.4944   0.6001   0.4592         no
+
+  Group: GALAXY_SOUNDS
+  Pair                                    D2 p     D3 p     D4 p   pass_all
+  DARK_MATTER <-> BLACK_HOLES           0.0575   0.5505   0.4025         no
+  DARK_MATTER <-> PLANETARY_RINGS       0.6095   0.5897   0.5037         no
+  DARK_MATTER <-> SOLAR_WINDS           0.1587   0.4110   0.3372         no
+  DARK_MATTER <-> SOLAR_FLAMES          0.1696   0.5712   0.1610         no
+  BLACK_HOLES <-> PLANETARY_RINGS       0.8077   0.9671   0.7786         no
+  BLACK_HOLES <-> SOLAR_WINDS           0.5984   0.9775   0.8324         no
+  BLACK_HOLES <-> SOLAR_FLAMES          0.9326   0.9544   0.9334         no
+  PLANETARY_RINGS <-> SOLAR_WINDS       0.9769   0.1464   0.9780         no
+  PLANETARY_RINGS <-> SOLAR_FLAMES      0.9895   0.1565   0.8506         no
+  SOLAR_WINDS <-> SOLAR_FLAMES          0.8746   0.4892   0.8625         no
+
+  Group: OXYGEN_SHAKE
+  Pair                                    D2 p     D3 p     D4 p   pass_all
+  MORNING_BREATH <-> EVENING_BREATH     0.5090   0.8533   0.1559         no
+  MORNING_BREATH <-> MINT               0.3042   0.7250   0.1580         no
+  MORNING_BREATH <-> CHOCOLATE          0.3594   0.7719   0.1590         no
+  MORNING_BREATH <-> GARLIC             0.5367   0.7612   0.2343         no
+  EVENING_BREATH <-> MINT               0.8280   0.1701   0.3359         no
+  EVENING_BREATH <-> CHOCOLATE          0.9473   0.1684   0.3192         no
+  EVENING_BREATH <-> GARLIC             0.3550   0.1360   0.4218         no
+  MINT <-> CHOCOLATE                    0.2386   0.3120   0.7811         no
+  MINT <-> GARLIC                       0.4125   0.1973   0.8493         no
+  CHOCOLATE <-> GARLIC                  0.3264   0.0807   0.3401         no
+
+  Group: ROBOT
+  Pair                                    D2 p     D3 p     D4 p   pass_all
+  VACUUMING <-> MOPPING                 0.5139   0.1511   0.1189         no
+  VACUUMING <-> DISHES                  0.4318   0.5025   0.0862         no
+  VACUUMING <-> LAUNDRY                 0.1370   0.1108   0.2182         no
+  VACUUMING <-> IRONING                 0.2382   0.1852   0.1780         no
+  MOPPING <-> DISHES                    0.7994   0.8935   0.0309         no
+  MOPPING <-> LAUNDRY                   0.8159   0.3658   0.0318         no
+  MOPPING <-> IRONING                   0.8143   0.6166   0.1991         no
+  DISHES <-> LAUNDRY                    0.7285   0.4246   0.1221         no
+  DISHES <-> IRONING                    0.7375   0.4117   0.3753         no
+  LAUNDRY <-> IRONING                   0.0423   0.2329   0.0902         no
+
+==========================================================================================
+Survivors (pass all 3 days)
+==========================================================================================
+  None. Kill criterion fired for all 4 groups (consistent with Phase 1 priors).
+
+==========================================================================================
+NEXT QUESTION FOR USER: 0 pair(s) survived. Which (if any) to wire as a pair trade?
+==========================================================================================

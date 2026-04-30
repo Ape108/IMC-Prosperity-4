@@ -656,13 +656,19 @@ class Trader:
                         threshold=0.001, k_ticks=2,
         )
         
+        self.strategies["PEBBLES_XS"] = R5XLSkewMMStrategy(
+                        symbol="PEBBLES_XS", limit=LIMIT, width=2,
+                        partner_symbol="PEBBLES_XL",
+                        threshold=0.001, k_ticks=2,
+        )
+        
         # Group Snacks - per product widths from snackpack.py
         self.strategies["SNACKPACK_CHOCOLATE"] = R5BaseMMStrategy("SNACKPACK_CHOCOLATE", LIMIT, width=3)
         self.strategies["SNACKPACK_RASPBERRY"] = R5BaseMMStrategy("SNACKPACK_RASPBERRY", LIMIT, width=3)
         self.strategies["SNACKPACK_PISTACHIO"] = R5BaseMMStrategy("SNACKPACK_PISTACHIO", LIMIT, width=3)
         
         # Group Robots — per-product widths per CLAUDE.md ROBOT deep-dive
-        self.strategies["ROBOT_DISHES"] = R5BaseMMStrategy("ROBOT_DISHES", LIMIT, width=1) # -4.6k on IMC submission 
+        self.strategies["ROBOT_DISHES"] = R5BaseMMStrategy("ROBOT_DISHES", LIMIT, width=1)
         self.strategies["ROBOT_IRONING"] = R5BaseMMStrategy("ROBOT_IRONING", LIMIT, width=1)
         self.strategies["ROBOT_LAUNDRY"] = R5BaseMMStrategy("ROBOT_LAUNDRY", LIMIT, width=2)
 
