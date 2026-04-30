@@ -300,7 +300,36 @@ class R5LeadLagMMStrategy(R5BaseMMStrategy, StatefulStrategy[dict[str, Any]]):
         self.warmup_ticks = 0
 
     def get_true_value(self, state: TradingState) -> float:
-        return self._microprice(state)
+        base = self._microprice(state)
+
+        leader_depth = state.order_depths.get(self.leader_symbol)
+        if leader_depth is None or not leader_depth.buy_orders or not leader_depth.sell_orders:
+            self.leader_history = []
+            self.warmup_ticks += 1
+            return base
+
+        leader_bid = max(leader_depth.buy_orders.keys())
+        leader_ask = min(leader_depth.sell_orders.keys())
+        leader_mid = (leader_bid + leader_ask) / 2
+
+        self.leader_history.append(leader_mid)
+        max_len = self.lag_ticks + 2
+        if len(self.leader_history) > max_len:
+            self.leader_history.pop(0)
+
+        if len(self.leader_history) == max_len:
+            mid_at_lag_minus_1 = self.leader_history[0]
+            mid_at_lag = self.leader_history[1]
+            if mid_at_lag_minus_1 != 0:
+                leader_return = (mid_at_lag - mid_at_lag_minus_1) / mid_at_lag_minus_1
+                base += self.k * leader_return * base
+                self.bias_fired += 1
+            else:
+                self.warmup_ticks += 1
+        else:
+            self.warmup_ticks += 1
+
+        return base
 
     def save(self) -> dict[str, Any]:
         return {
@@ -331,11 +360,81 @@ class Trader:
         self.strategies: dict[Symbol, Strategy] = {}
 
         def mm_baseline():
-            """Control: all 5 products at width=1. Reproduces strategy_h.py rows."""
+            """Control: all 5 products at width=1. Reproduces strategy_h.py rows.
+
+            MICROCHIP_CIRCLE                 -531.00   -1933.00   10477.00    8013.00
+            MICROCHIP_OVAL                   3824.00    4264.00     556.00    8644.00
+            MICROCHIP_RECTANGLE             11915.50    4787.00  -14246.00    2456.50
+            MICROCHIP_SQUARE                  522.50   -2550.00    6549.00    4521.50
+            MICROCHIP_TRIANGLE               4066.00   -1916.00    7457.00    9607.00
+            
+            w/ queue-penetration 0:
+            MICROCHIP_CIRCLE                -1983.00   -3427.00    8881.00    3471.00
+            MICROCHIP_OVAL                   2319.00    2771.00    -516.00    4574.00
+            MICROCHIP_RECTANGLE             10411.50    3331.00  -15614.00   -1871.50
+            MICROCHIP_SQUARE                -1207.50   -5108.00    4005.00   -2310.50
+            MICROCHIP_TRIANGLE               2561.00   -3645.00    6019.00    4935.00
+            """
             for sym in SYMBOLS:
                 self.strategies[sym] = R5BaseMMStrategy(sym, LIMIT, width=1)
 
-        mm_baseline()
+        def lead_lag_oval_k1():
+            """Option A, k=1.0 (most aggressive — diagnostic test).
+
+            MICROCHIP_OVAL                -227148.00 -217799.50 -169894.00 -614841.50
+            """
+            for sym in SYMBOLS:
+                if sym == "MICROCHIP_OVAL":
+                    self.strategies[sym] = R5LeadLagMMStrategy(
+                        "MICROCHIP_OVAL", LIMIT, width=1,
+                        leader_symbol="MICROCHIP_CIRCLE", lag_ticks=50, k=1.0,
+                    )
+                else:
+                    self.strategies[sym] = R5BaseMMStrategy(sym, LIMIT, width=1)
+
+        def lead_lag_oval_k05():
+            """Option A, k=0.5 (moderate over-bet).
+
+            MICROCHIP_OVAL                -106942.00 -105314.00  -81930.00 -294186.00
+            """
+            for sym in SYMBOLS:
+                if sym == "MICROCHIP_OVAL":
+                    self.strategies[sym] = R5LeadLagMMStrategy(
+                        "MICROCHIP_OVAL", LIMIT, width=1,
+                        leader_symbol="MICROCHIP_CIRCLE", lag_ticks=50, k=0.5,
+                    )
+                else:
+                    self.strategies[sym] = R5BaseMMStrategy(sym, LIMIT, width=1)
+
+        def lead_lag_oval_k005():
+            """Option A, k=0.05 (calibrated to |xcorr|).
+
+            MICROCHIP_OVAL                   3893.00    3859.50    -633.00    7119.50
+            """
+            for sym in SYMBOLS:
+                if sym == "MICROCHIP_OVAL":
+                    self.strategies[sym] = R5LeadLagMMStrategy(
+                        "MICROCHIP_OVAL", LIMIT, width=1,
+                        leader_symbol="MICROCHIP_CIRCLE", lag_ticks=50, k=0.05,
+                    )
+                else:
+                    self.strategies[sym] = R5BaseMMStrategy(sym, LIMIT, width=1)
+
+        def rectangle_widen():
+            """Option B. RECTANGLE at width=2; others at width=1. Targets D+4 -14k outlier.
+
+            MICROCHIP_RECTANGLE             12216.50    6093.00  -13029.00    5280.50
+            
+            queue-penetration 0:
+            MICROCHIP_RECTANGLE             10712.50    4723.00  -14341.00    1094.50
+            """
+            for sym in SYMBOLS:
+                if sym == "MICROCHIP_RECTANGLE":
+                    self.strategies[sym] = R5BaseMMStrategy(sym, LIMIT, width=2)
+                else:
+                    self.strategies[sym] = R5BaseMMStrategy(sym, LIMIT, width=1)
+
+        rectangle_widen()
 
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
         orders: dict[Symbol, list[Order]] = {}
