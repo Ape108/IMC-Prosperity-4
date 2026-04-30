@@ -330,78 +330,206 @@ class R5CorrMMStrategy(R5BaseMMStrategy, StatefulStrategy[dict[str, Any]]):
         self.last_partner_mid = float(v) if v is not None else None
 
 
-TIGHT_TIER = [
-    "ROBOT_VACUUMING", "ROBOT_MOPPING", "ROBOT_DISHES", "ROBOT_LAUNDRY", "ROBOT_IRONING",
-    "TRANSLATOR_SPACE_GRAY", "TRANSLATOR_ASTRO_BLACK", "TRANSLATOR_ECLIPSE_CHARCOAL",
-    "TRANSLATOR_GRAPHITE_MIST", "TRANSLATOR_VOID_BLUE",
-    "MICROCHIP_CIRCLE", "MICROCHIP_OVAL", "MICROCHIP_SQUARE", "MICROCHIP_RECTANGLE",
-    "MICROCHIP_TRIANGLE",
-    "SLEEP_POD_SUEDE", "SLEEP_POD_LAMB_WOOL", "SLEEP_POD_POLYESTER", "SLEEP_POD_NYLON",
-    "SLEEP_POD_COTTON",
-    "PANEL_1X2", "PANEL_2X2", "PANEL_1X4", "PANEL_2X4", "PANEL_4X4",
-]
+class R5TickResidualMMStrategy(R5BaseMMStrategy, StatefulStrategy[dict[str, Any]]):
+    # Adjusts fair value by the within-tick unexplained residual:
+    #   residual = beta * partner_return_this_tick - own_return_this_tick
+    # Captures the gap when partner's book has moved but own book hasn't fully absorbed it yet.
+    def __init__(self, symbol: Symbol, limit: int, width: int, partner_symbol: Symbol, beta: float) -> None:
+        super().__init__(symbol, limit, width)
+        self.partner_symbol = partner_symbol
+        self.beta = beta
+        self.last_partner_mid: float | None = None
+        self.last_own_mid: float | None = None
 
-MEDIUM_TIER = [
-    "OXYGEN_SHAKE_MORNING_BREATH", "OXYGEN_SHAKE_EVENING_BREATH", "OXYGEN_SHAKE_MINT",
-    "OXYGEN_SHAKE_CHOCOLATE", "OXYGEN_SHAKE_GARLIC",
-    "PEBBLES_XS", "PEBBLES_S", "PEBBLES_M", "PEBBLES_L", "PEBBLES_XL",
-    "UV_VISOR_YELLOW", "UV_VISOR_AMBER", "UV_VISOR_ORANGE", "UV_VISOR_RED", "UV_VISOR_MAGENTA",
-    "GALAXY_SOUNDS_DARK_MATTER", "GALAXY_SOUNDS_BLACK_HOLES", "GALAXY_SOUNDS_PLANETARY_RINGS",
-    "GALAXY_SOUNDS_SOLAR_WINDS", "GALAXY_SOUNDS_SOLAR_FLAMES",
-]
+    def get_true_value(self, state: TradingState) -> float:
+        base = self._microprice(state)
 
-WIDE_TIER = [
-    "SNACKPACK_CHOCOLATE", "SNACKPACK_VANILLA", "SNACKPACK_PISTACHIO",
-    "SNACKPACK_STRAWBERRY", "SNACKPACK_RASPBERRY",
+        partner_depth = state.order_depths.get(self.partner_symbol)
+        if partner_depth is None or not partner_depth.buy_orders or not partner_depth.sell_orders:
+            self.last_partner_mid = None
+            self.last_own_mid = None
+            return base
+
+        partner_bid = max(partner_depth.buy_orders.keys())
+        partner_ask = min(partner_depth.sell_orders.keys())
+        partner_mid = (partner_bid + partner_ask) / 2
+
+        own_depth = state.order_depths[self.symbol]
+        own_bid = max(own_depth.buy_orders.keys())
+        own_ask = min(own_depth.sell_orders.keys())
+        own_mid = (own_bid + own_ask) / 2
+
+        if self.last_partner_mid is not None and self.last_own_mid is not None:
+            partner_return = (partner_mid - self.last_partner_mid) / self.last_partner_mid
+            own_return = (own_mid - self.last_own_mid) / self.last_own_mid
+            residual = self.beta * partner_return - own_return
+            base += residual * base
+
+        self.last_partner_mid = partner_mid
+        self.last_own_mid = own_mid
+        return base
+
+    def save(self) -> dict[str, Any]:
+        return {"last_partner_mid": self.last_partner_mid, "last_own_mid": self.last_own_mid}
+
+    def load(self, data: dict[str, Any]) -> None:
+        v = data.get("last_partner_mid")
+        self.last_partner_mid = float(v) if v is not None else None
+        v = data.get("last_own_mid")
+        self.last_own_mid = float(v) if v is not None else None
+
+
+class R5BasketCapMMStrategy(R5BaseMMStrategy):
+    """
+    Basket-aware MM. Capacity skew driven by system-level factor exposure
+    rather than per-leg position. Per-leg hard cap preserved.
+
+    Phase 1 of B2 (basket-aware MM). Phase 2 will add price skew.
+    """
+
+    def __init__(
+        self,
+        symbol: Symbol,
+        limit: int,
+        width: int,
+        leg_sign: int,
+        partners: dict[Symbol, int],
+    ) -> None:
+        super().__init__(symbol, limit, width)
+        self.leg_sign = leg_sign
+        self.partners = partners
+
+    def get_required_symbols(self) -> list[Symbol]:
+        return [self.symbol] + list(self.partners.keys())
+
+    def act(self, state: TradingState) -> None:
+        own_pos = state.position.get(self.symbol, 0)
+
+        factor = self.leg_sign * own_pos
+        for partner_symbol, partner_sign in self.partners.items():
+            factor += partner_sign * state.position.get(partner_symbol, 0)
+
+        system_size = 1 + len(self.partners)
+        effective_pos = self.leg_sign * factor / system_size
+
+        true_value = self.get_true_value(state)
+        order_depth = state.order_depths[self.symbol]
+        buy_orders = sorted(order_depth.buy_orders.items(), reverse=True)
+        sell_orders = sorted(order_depth.sell_orders.items())
+
+        to_buy = floor(self.limit - effective_pos)
+        to_sell = floor(self.limit + effective_pos)
+        # Per-leg hard cap (platform constraint):
+        to_buy = max(0, min(to_buy, self.limit - own_pos))
+        to_sell = max(0, min(to_sell, self.limit + own_pos))
+
+        max_buy_price = int(true_value) - 1 if true_value % 1 == 0 else floor(true_value)
+        min_sell_price = int(true_value) + 1 if true_value % 1 == 0 else ceil(true_value)
+
+        for price, volume in sell_orders:
+            if to_buy > 0 and price <= max_buy_price:
+                quantity = min(to_buy, -volume)
+                self.buy(price, quantity)
+                to_buy -= quantity
+
+        if to_buy > 0:
+            passive_buy = max_buy_price - self.width + 1
+            self.buy(passive_buy, to_buy)
+
+        for price, volume in buy_orders:
+            if to_sell > 0 and price >= min_sell_price:
+                quantity = min(to_sell, volume)
+                self.sell(price, quantity)
+                to_sell -= quantity
+
+        if to_sell > 0:
+            passive_sell = min_sell_price + self.width - 1
+            self.sell(passive_sell, to_sell)
+
+
+SYMBOLS = [
+    "SNACKPACK_CHOCOLATE",
+    "SNACKPACK_VANILLA",
+    "SNACKPACK_PISTACHIO",
+    "SNACKPACK_STRAWBERRY",
+    "SNACKPACK_RASPBERRY",
 ]
 
 LIMIT = 10
 
-# Parameter safeguards (reference):
-#   beta  — use OLS from returns regression: beta = corr(own, partner) * (std_own / std_partner).
-#            Negative for anti-correlated pairs (CHOC/VAN, RASP/STRAW), positive for co-moving pairs (PIST/STRAW).
-#   width — set from spread economics: width >= 2 * sigma_microprice_error (how far microprice drifts
-#            from realized fill mid). Wider = less adverse selection, fewer fills. Do not tune to PnL.
+
 class Trader:
     def __init__(self) -> None:
         self.strategies: dict[Symbol, Strategy] = {}
 
-        # ── Tight tier (width=1) ─────────────────────────────────────────
-        for sym in TIGHT_TIER:
-            if sym == "ROBOT_IRONING":
-                # ROBOT_DISHES lag-1 ACF=-0.222 is stronger but day-4-only (unstable) — skipped
-                self.strategies[sym] = R5AutocorrMMStrategy(sym, LIMIT, width=1, alpha=0.121)
-            else:
-                self.strategies[sym] = R5BaseMMStrategy(sym, LIMIT, width=1)
+        # Corr overlays (lag-1 partner lean) — active for baseline comparison
+        
+        def corr():
+            self.strategies["SNACKPACK_RASPBERRY"] = R5CorrMMStrategy(
+                "SNACKPACK_RASPBERRY", LIMIT, width=3, partner_symbol="SNACKPACK_STRAWBERRY", beta=0.462,
+            )
+            self.strategies["SNACKPACK_STRAWBERRY"] = R5CorrMMStrategy(
+                "SNACKPACK_STRAWBERRY", LIMIT, width=3, partner_symbol="SNACKPACK_RASPBERRY", beta=0.462,
+            )
+            self.strategies["SNACKPACK_CHOCOLATE"] = R5CorrMMStrategy(
+                "SNACKPACK_CHOCOLATE", LIMIT, width=3, partner_symbol="SNACKPACK_VANILLA", beta=0.458,
+            )
+            self.strategies["SNACKPACK_VANILLA"] = R5CorrMMStrategy(
+                "SNACKPACK_VANILLA", LIMIT, width=3, partner_symbol="SNACKPACK_CHOCOLATE", beta=0.458,
+            )
+            self.strategies["SNACKPACK_PISTACHIO"] = R5CorrMMStrategy(
+                "SNACKPACK_PISTACHIO", LIMIT, width=3, partner_symbol="SNACKPACK_STRAWBERRY", beta=-0.457,
+            )
 
-        # ── Medium tier (width=2) ────────────────────────────────────────
-        for sym in MEDIUM_TIER:
-            if sym == "OXYGEN_SHAKE_EVENING_BREATH":
-                self.strategies[sym] = R5AutocorrMMStrategy(sym, LIMIT, width=2, alpha=0.118)
-            elif sym == "OXYGEN_SHAKE_CHOCOLATE":
-                self.strategies[sym] = R5AutocorrMMStrategy(sym, LIMIT, width=2, alpha=0.082)
-            elif sym == "PEBBLES_XL":
-                self.strategies[sym] = R5CorrMMStrategy(sym, LIMIT, width=2, partner_symbol="PEBBLES_M", beta=0.253)
-            elif sym == "PEBBLES_M":
-                self.strategies[sym] = R5CorrMMStrategy(sym, LIMIT, width=2, partner_symbol="PEBBLES_XL", beta=0.253)
-            elif sym == "PEBBLES_L":
-                self.strategies[sym] = R5CorrMMStrategy(sym, LIMIT, width=2, partner_symbol="PEBBLES_XL", beta=0.247)
-            elif sym == "PEBBLES_S":
-                self.strategies[sym] = R5CorrMMStrategy(sym, LIMIT, width=2, partner_symbol="PEBBLES_XL", beta=0.242)
-            elif sym == "PEBBLES_XS":
-                self.strategies[sym] = R5CorrMMStrategy(sym, LIMIT, width=2, partner_symbol="PEBBLES_XL", beta=0.238)
-            else:
-                self.strategies[sym] = R5BaseMMStrategy(sym, LIMIT, width=2)
+        def mm():
+            self.strategies["SNACKPACK_RASPBERRY"] = R5BaseMMStrategy("SNACKPACK_RASPBERRY", LIMIT, width=3)
+            self.strategies["SNACKPACK_STRAWBERRY"] = R5BaseMMStrategy("SNACKPACK_STRAWBERRY", LIMIT, width=3)
+            self.strategies["SNACKPACK_CHOCOLATE"] = R5BaseMMStrategy("SNACKPACK_CHOCOLATE", LIMIT, width=3)
+            self.strategies["SNACKPACK_VANILLA"] = R5BaseMMStrategy("SNACKPACK_VANILLA", LIMIT, width=3)
+            self.strategies["SNACKPACK_PISTACHIO"] = R5BaseMMStrategy("SNACKPACK_PISTACHIO", LIMIT, width=3)
 
-        # ── Wide tier (width=3) ──────────────────────────────────────────
-        # SNACKPACK 3-leg drop-losers floor: ship only conservative-positive winners.
-        # VANILLA and STRAWBERRY dropped (default-negative AND conservative-negative).
-        # PISTACHIO kept despite conservative-negative (queue-priority alpha) per user decision.
-        # See docs/superpowers/specs/2026-04-29-snackpack-basket-mm-design.md (Tier C).
-        self.strategies["SNACKPACK_CHOCOLATE"] = R5BaseMMStrategy("SNACKPACK_CHOCOLATE", LIMIT, width=3)
-        self.strategies["SNACKPACK_RASPBERRY"] = R5BaseMMStrategy("SNACKPACK_RASPBERRY", LIMIT, width=3)
-        self.strategies["SNACKPACK_PISTACHIO"] = R5BaseMMStrategy("SNACKPACK_PISTACHIO", LIMIT, width=3)
+        def tick_lean():
+            # beta signs: negative for anti-correlated pairs (corr ~ -0.92), positive for co-moving (PIST/STRAW corr ~ +0.91)
+            self.strategies["SNACKPACK_RASPBERRY"] = R5TickResidualMMStrategy(
+                "SNACKPACK_RASPBERRY", LIMIT, width=3, partner_symbol="SNACKPACK_STRAWBERRY", beta=-0.462,
+            )
+            self.strategies["SNACKPACK_STRAWBERRY"] = R5TickResidualMMStrategy(
+                "SNACKPACK_STRAWBERRY", LIMIT, width=3, partner_symbol="SNACKPACK_RASPBERRY", beta=-0.462,
+            )
+            self.strategies["SNACKPACK_CHOCOLATE"] = R5TickResidualMMStrategy(
+                "SNACKPACK_CHOCOLATE", LIMIT, width=3, partner_symbol="SNACKPACK_VANILLA", beta=-0.458,
+            )
+            self.strategies["SNACKPACK_VANILLA"] = R5TickResidualMMStrategy(
+                "SNACKPACK_VANILLA", LIMIT, width=3, partner_symbol="SNACKPACK_CHOCOLATE", beta=-0.458,
+            )
+            self.strategies["SNACKPACK_PISTACHIO"] = R5TickResidualMMStrategy(
+                "SNACKPACK_PISTACHIO", LIMIT, width=3, partner_symbol="SNACKPACK_STRAWBERRY", beta=0.457,
+            )
 
+        def basket_cap():
+            self.strategies["SNACKPACK_CHOCOLATE"] = R5BasketCapMMStrategy(
+                "SNACKPACK_CHOCOLATE", LIMIT, width=3,
+                leg_sign=+1, partners={"SNACKPACK_VANILLA": -1},
+            )
+            self.strategies["SNACKPACK_VANILLA"] = R5BasketCapMMStrategy(
+                "SNACKPACK_VANILLA", LIMIT, width=3,
+                leg_sign=-1, partners={"SNACKPACK_CHOCOLATE": +1},
+            )
+            self.strategies["SNACKPACK_RASPBERRY"] = R5BasketCapMMStrategy(
+                "SNACKPACK_RASPBERRY", LIMIT, width=3,
+                leg_sign=-1, partners={"SNACKPACK_STRAWBERRY": +1, "SNACKPACK_PISTACHIO": +1},
+            )
+            self.strategies["SNACKPACK_STRAWBERRY"] = R5BasketCapMMStrategy(
+                "SNACKPACK_STRAWBERRY", LIMIT, width=3,
+                leg_sign=+1, partners={"SNACKPACK_RASPBERRY": -1, "SNACKPACK_PISTACHIO": +1},
+            )
+            self.strategies["SNACKPACK_PISTACHIO"] = R5BasketCapMMStrategy(
+                "SNACKPACK_PISTACHIO", LIMIT, width=3,
+                leg_sign=+1, partners={"SNACKPACK_RASPBERRY": -1, "SNACKPACK_STRAWBERRY": +1},
+            )
+
+        mm()
+            
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
         orders: dict[Symbol, list[Order]] = {}
         conversions = 0

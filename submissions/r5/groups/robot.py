@@ -298,109 +298,203 @@ class R5AutocorrMMStrategy(R5BaseMMStrategy, StatefulStrategy[dict[str, Any]]):
         self.last_mid = float(v) if v is not None else None
 
 
-class R5CorrMMStrategy(R5BaseMMStrategy, StatefulStrategy[dict[str, Any]]):
-    def __init__(self, symbol: Symbol, limit: int, width: int, partner_symbol: Symbol, beta: float) -> None:
-        super().__init__(symbol, limit, width)
-        self.partner_symbol = partner_symbol
-        self.beta = beta
-        self.last_partner_mid: float | None = None
+class R5PairTradeStrategy(StatefulStrategy[dict[str, Any]]):
+    def __init__(
+        self,
+        symbol_a: Symbol,
+        symbol_b: Symbol,
+        limit: int,
+        window: int,
+        z_entry: float,
+        z_exit: float,
+        max_hold_ticks: int,
+    ) -> None:
+        super().__init__(symbol_a, limit)
+        self.symbol_a = symbol_a
+        self.symbol_b = symbol_b
+        self.window = window
+        self.z_entry = z_entry
+        self.z_exit = z_exit
+        self.max_hold_ticks = max_hold_ticks
+        self.spread_history: list[float] = []
+        self.entry_tick: int | None = None
 
-    def get_true_value(self, state: TradingState) -> float:
-        base = self._microprice(state)
-        partner_depth = state.order_depths.get(self.partner_symbol)
-        if partner_depth is None or not partner_depth.buy_orders or not partner_depth.sell_orders:
-            self.last_partner_mid = None
-            return base
+    def get_required_symbols(self) -> list[Symbol]:
+        return [self.symbol_a, self.symbol_b]
 
-        partner_bid = max(partner_depth.buy_orders.keys())
-        partner_ask = min(partner_depth.sell_orders.keys())
-        partner_mid = (partner_bid + partner_ask) / 2
+    def _mid(self, state: TradingState, symbol: Symbol) -> float:
+        od = state.order_depths[symbol]
+        return (max(od.buy_orders.keys()) + min(od.sell_orders.keys())) / 2
 
-        if self.last_partner_mid is not None:
-            partner_return = (partner_mid - self.last_partner_mid) / self.last_partner_mid
-            base -= self.beta * partner_return * base
-        self.last_partner_mid = partner_mid
-        return base
+    def _take(self, state: TradingState, symbol: Symbol, side: int, qty: int) -> None:
+        """Cross the spread. side = +1 buy at ask, -1 sell at bid."""
+        od = state.order_depths[symbol]
+        if side > 0:
+            price = min(od.sell_orders.keys())
+            self.orders.append(Order(symbol, price, qty))
+        else:
+            price = max(od.buy_orders.keys())
+            self.orders.append(Order(symbol, price, -qty))
+
+    def _flatten(self, state: TradingState, symbol: Symbol, position: int) -> None:
+        """Reverse an existing position: sell at bid if long, buy at ask if short."""
+        if position > 0:
+            self._take(state, symbol, side=-1, qty=position)
+        elif position < 0:
+            self._take(state, symbol, side=+1, qty=-position)
+
+    def act(self, state: TradingState) -> None:
+        mid_a = self._mid(state, self.symbol_a)
+        mid_b = self._mid(state, self.symbol_b)
+        spread = mid_a - mid_b
+
+        self.spread_history.append(spread)
+        if len(self.spread_history) > self.window:
+            self.spread_history.pop(0)
+
+        pos_a = state.position.get(self.symbol_a, 0)
+        pos_b = state.position.get(self.symbol_b, 0)
+        is_flat = pos_a == 0 and pos_b == 0
+
+        # Time-stop is a risk-management override: fires regardless of z computability
+        if not is_flat:
+            assert self.entry_tick is not None, "Holding position without entry_tick — invariant violation"
+            held_delta = state.timestamp - self.entry_tick
+            if held_delta > self.max_hold_ticks * 100:
+                self._flatten(state, self.symbol_a, pos_a)
+                self._flatten(state, self.symbol_b, pos_b)
+                self.entry_tick = None
+                return
+
+        if len(self.spread_history) < self.window:
+            return  # warming up
+
+        mean = sum(self.spread_history) / len(self.spread_history)
+        var = sum((s - mean) ** 2 for s in self.spread_history) / len(self.spread_history)
+        std = var ** 0.5
+        if std == 0:
+            return  # no signal — flat spread
+
+        z = (spread - mean) / std
+
+        if is_flat:
+            if z > self.z_entry:
+                self._take(state, self.symbol_a, side=-1, qty=self.limit)
+                self._take(state, self.symbol_b, side=+1, qty=self.limit)
+                self.entry_tick = state.timestamp
+            elif z < -self.z_entry:
+                self._take(state, self.symbol_a, side=+1, qty=self.limit)
+                self._take(state, self.symbol_b, side=-1, qty=self.limit)
+                self.entry_tick = state.timestamp
+        else:
+            if abs(z) < self.z_exit:
+                self._flatten(state, self.symbol_a, pos_a)
+                self._flatten(state, self.symbol_b, pos_b)
+                self.entry_tick = None
 
     def save(self) -> dict[str, Any]:
-        return {"last_partner_mid": self.last_partner_mid}
+        return {"spread_history": list(self.spread_history), "entry_tick": self.entry_tick}
 
     def load(self, data: dict[str, Any]) -> None:
-        v = data.get("last_partner_mid")
-        self.last_partner_mid = float(v) if v is not None else None
+        self.spread_history = list(data.get("spread_history", []))
+        v = data.get("entry_tick")
+        self.entry_tick = int(v) if v is not None else None
 
 
-TIGHT_TIER = [
-    "ROBOT_VACUUMING", "ROBOT_MOPPING", "ROBOT_DISHES", "ROBOT_LAUNDRY", "ROBOT_IRONING",
-    "TRANSLATOR_SPACE_GRAY", "TRANSLATOR_ASTRO_BLACK", "TRANSLATOR_ECLIPSE_CHARCOAL",
-    "TRANSLATOR_GRAPHITE_MIST", "TRANSLATOR_VOID_BLUE",
-    "MICROCHIP_CIRCLE", "MICROCHIP_OVAL", "MICROCHIP_SQUARE", "MICROCHIP_RECTANGLE",
-    "MICROCHIP_TRIANGLE",
-    "SLEEP_POD_SUEDE", "SLEEP_POD_LAMB_WOOL", "SLEEP_POD_POLYESTER", "SLEEP_POD_NYLON",
-    "SLEEP_POD_COTTON",
-    "PANEL_1X2", "PANEL_2X2", "PANEL_1X4", "PANEL_2X4", "PANEL_4X4",
-]
-
-MEDIUM_TIER = [
-    "OXYGEN_SHAKE_MORNING_BREATH", "OXYGEN_SHAKE_EVENING_BREATH", "OXYGEN_SHAKE_MINT",
-    "OXYGEN_SHAKE_CHOCOLATE", "OXYGEN_SHAKE_GARLIC",
-    "PEBBLES_XS", "PEBBLES_S", "PEBBLES_M", "PEBBLES_L", "PEBBLES_XL",
-    "UV_VISOR_YELLOW", "UV_VISOR_AMBER", "UV_VISOR_ORANGE", "UV_VISOR_RED", "UV_VISOR_MAGENTA",
-    "GALAXY_SOUNDS_DARK_MATTER", "GALAXY_SOUNDS_BLACK_HOLES", "GALAXY_SOUNDS_PLANETARY_RINGS",
-    "GALAXY_SOUNDS_SOLAR_WINDS", "GALAXY_SOUNDS_SOLAR_FLAMES",
-]
-
-WIDE_TIER = [
-    "SNACKPACK_CHOCOLATE", "SNACKPACK_VANILLA", "SNACKPACK_PISTACHIO",
-    "SNACKPACK_STRAWBERRY", "SNACKPACK_RASPBERRY",
+SYMBOLS = [
+    "ROBOT_VACUUMING",
+    "ROBOT_MOPPING",
+    "ROBOT_DISHES",
+    "ROBOT_LAUNDRY",
+    "ROBOT_IRONING",
 ]
 
 LIMIT = 10
 
-# Parameter safeguards (reference):
-#   beta  — use OLS from returns regression: beta = corr(own, partner) * (std_own / std_partner).
-#            Negative for anti-correlated pairs (CHOC/VAN, RASP/STRAW), positive for co-moving pairs (PIST/STRAW).
-#   width — set from spread economics: width >= 2 * sigma_microprice_error (how far microprice drifts
-#            from realized fill mid). Wider = less adverse selection, fewer fills. Do not tune to PnL.
+
 class Trader:
     def __init__(self) -> None:
         self.strategies: dict[Symbol, Strategy] = {}
 
-        # ── Tight tier (width=1) ─────────────────────────────────────────
-        for sym in TIGHT_TIER:
-            if sym == "ROBOT_IRONING":
-                # ROBOT_DISHES lag-1 ACF=-0.222 is stronger but day-4-only (unstable) — skipped
-                self.strategies[sym] = R5AutocorrMMStrategy(sym, LIMIT, width=1, alpha=0.121)
-            else:
+        def mm_baseline():
+            """ROBOT_DISHES                     6888.00    9049.50   -3505.00   12432.50
+                ROBOT_IRONING                   13644.00   -1680.00    1005.00   12969.00
+                ROBOT_LAUNDRY                   -3036.00     579.50    4963.50    2507.00
+                ROBOT_MOPPING                  -12877.00  -12006.00    3547.50  -21335.50
+                ROBOT_VACUUMING                 -4178.00    -124.00    -259.00   -4561.00
+                
+                w/ queue penetration 0:
+                ROBOT_DISHES                     4686.00    6114.50   -5940.00    4860.50
+                ROBOT_IRONING                   11564.00   -4347.00    -871.00    6346.00
+                ROBOT_LAUNDRY                   -5266.00   -2355.50    2799.50   -4822.00
+                ROBOT_MOPPING                  -15114.00  -15226.00     721.50  -29618.50
+                ROBOT_VACUUMING                 -6408.00   -2740.00   -2143.00  -11291.00
+            """
+            for sym in SYMBOLS:
                 self.strategies[sym] = R5BaseMMStrategy(sym, LIMIT, width=1)
 
-        # ── Medium tier (width=2) ────────────────────────────────────────
-        for sym in MEDIUM_TIER:
-            if sym == "OXYGEN_SHAKE_EVENING_BREATH":
-                self.strategies[sym] = R5AutocorrMMStrategy(sym, LIMIT, width=2, alpha=0.118)
-            elif sym == "OXYGEN_SHAKE_CHOCOLATE":
-                self.strategies[sym] = R5AutocorrMMStrategy(sym, LIMIT, width=2, alpha=0.082)
-            elif sym == "PEBBLES_XL":
-                self.strategies[sym] = R5CorrMMStrategy(sym, LIMIT, width=2, partner_symbol="PEBBLES_M", beta=0.253)
-            elif sym == "PEBBLES_M":
-                self.strategies[sym] = R5CorrMMStrategy(sym, LIMIT, width=2, partner_symbol="PEBBLES_XL", beta=0.253)
-            elif sym == "PEBBLES_L":
-                self.strategies[sym] = R5CorrMMStrategy(sym, LIMIT, width=2, partner_symbol="PEBBLES_XL", beta=0.247)
-            elif sym == "PEBBLES_S":
-                self.strategies[sym] = R5CorrMMStrategy(sym, LIMIT, width=2, partner_symbol="PEBBLES_XL", beta=0.242)
-            elif sym == "PEBBLES_XS":
-                self.strategies[sym] = R5CorrMMStrategy(sym, LIMIT, width=2, partner_symbol="PEBBLES_XL", beta=0.238)
-            else:
+        def autocorr_dishes():
+            """ROBOT_DISHES                   -30059.00  -33662.00  382933.00  319212.00
+                ROBOT_IRONING                   30399.00   -6836.00   -3889.00   19674.00
+                ROBOT_LAUNDRY                   -3036.00     579.50    4963.50    2507.00
+                ROBOT_MOPPING                  -12877.00  -12006.00    3547.50  -21335.50
+                ROBOT_VACUUMING                 -4178.00    -124.00    -259.00   -4561.00
+                
+                w/ queue penetration 0:
+                
+                ROBOT_DISHES                   -75159.00  -78052.00  322490.00  169279.00
+                ROBOT_IRONING                   21763.00  -12112.00   -7149.00    2502.00
+                ROBOT_LAUNDRY                   -5266.00   -2355.50    2799.50   -4822.00
+                ROBOT_MOPPING                  -15114.00  -15226.00     721.50  -29618.50
+                ROBOT_VACUUMING                 -6408.00   -2740.00   -2143.00  -11291.00
+            """
+            for sym in SYMBOLS:
+                if sym == "ROBOT_DISHES":
+                    # α = combined-day lag-1 ACF from EDA (eda_triage_summary.md L113: DISHES = -0.222)
+                    self.strategies[sym] = R5AutocorrMMStrategy(sym, LIMIT, width=1, alpha=0.222)
+                elif sym == "ROBOT_IRONING":
+                    # α = combined-day lag-1 ACF from EDA (eda_triage_summary.md L114: IRONING = -0.121)
+                    self.strategies[sym] = R5AutocorrMMStrategy(sym, LIMIT, width=1, alpha=0.121)
+                else:
+                    self.strategies[sym] = R5BaseMMStrategy(sym, LIMIT, width=1)
+
+        def pair_trade_laundry_vacuuming():
+            """Error: AssertionError: Holding position without entry_tick — invariant violation
+            """
+            for sym in SYMBOLS:
+                if sym in ("ROBOT_LAUNDRY", "ROBOT_VACUUMING"):
+                    continue  # registered once below as a single pair-trade strategy;
+                              # VACUUMING orders are emitted by LAUNDRY's R5PairTradeStrategy via
+                              # Trader.run's setdefault().append() — no separate key needed
+                self.strategies[sym] = R5BaseMMStrategy(sym, LIMIT, width=1)
+            self.strategies["ROBOT_LAUNDRY"] = R5PairTradeStrategy(
+                symbol_a="ROBOT_LAUNDRY",
+                symbol_b="ROBOT_VACUUMING",
+                limit=LIMIT,
+                window=200,
+                z_entry=2.0,
+                z_exit=0.5,
+                max_hold_ticks=500,
+            )
+
+        def width_tier_2():
+            """ROBOT_DISHES                     7150.00    7866.50   -5421.00    9595.50
+                ROBOT_IRONING                   14348.00   -3158.00    1154.00   12344.00
+                ROBOT_LAUNDRY                   -1898.00      65.50   10148.50    8316.00
+                ROBOT_MOPPING                  -12046.00  -10604.00    4247.00  -18403.00
+                ROBOT_VACUUMING                 -5170.00    1391.00    1869.00   -1910.00
+                
+                w/ queue penetration 0:
+                ROBOT_DISHES                     5219.00    5031.50   -7799.00    2451.50
+                ROBOT_IRONING                   12298.00   -5761.00    -694.00    5843.00
+                ROBOT_LAUNDRY                   -3933.00   -2779.50    8351.50    1639.00
+                ROBOT_MOPPING                  -14081.00  -13616.00    1559.00  -26138.00
+                ROBOT_VACUUMING                 -7135.00    -811.00     193.00   -7753.00
+            """
+            for sym in SYMBOLS:
                 self.strategies[sym] = R5BaseMMStrategy(sym, LIMIT, width=2)
 
-        # ── Wide tier (width=3) ──────────────────────────────────────────
-        # SNACKPACK 3-leg drop-losers floor: ship only conservative-positive winners.
-        # VANILLA and STRAWBERRY dropped (default-negative AND conservative-negative).
-        # PISTACHIO kept despite conservative-negative (queue-priority alpha) per user decision.
-        # See docs/superpowers/specs/2026-04-29-snackpack-basket-mm-design.md (Tier C).
-        self.strategies["SNACKPACK_CHOCOLATE"] = R5BaseMMStrategy("SNACKPACK_CHOCOLATE", LIMIT, width=3)
-        self.strategies["SNACKPACK_RASPBERRY"] = R5BaseMMStrategy("SNACKPACK_RASPBERRY", LIMIT, width=3)
-        self.strategies["SNACKPACK_PISTACHIO"] = R5BaseMMStrategy("SNACKPACK_PISTACHIO", LIMIT, width=3)
+        width_tier_2()
 
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
         orders: dict[Symbol, list[Order]] = {}
@@ -415,7 +509,8 @@ class Trader:
                 strategy.load(old_trader_data[symbol])
 
             strategy_orders, strategy_conversions = strategy.run(state)
-            orders[symbol] = strategy_orders
+            for order in strategy_orders:
+                orders.setdefault(order.symbol, []).append(order)
             conversions += strategy_conversions
 
             if isinstance(strategy, StatefulStrategy):
