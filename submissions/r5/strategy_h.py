@@ -448,6 +448,7 @@ class R5PairTradeStrategy(StatefulStrategy[dict[str, Any]]):
         z_entry: float,
         z_exit: float,
         max_hold_ticks: int,
+        limit_b: int | None = None,
     ) -> None:
         super().__init__(symbol_a, limit)
         self.symbol_a = symbol_a
@@ -456,6 +457,10 @@ class R5PairTradeStrategy(StatefulStrategy[dict[str, Any]]):
         self.z_entry = z_entry
         self.z_exit = z_exit
         self.max_hold_ticks = max_hold_ticks
+        # Per-leg sizing: limit_b defaults to limit for symmetric pair trades.
+        # Asymmetric sizing (e.g. PEBBLES_M=5, PEBBLES_XL=10) is used when leg
+        # decomposition shows one leg drives all alpha — see Phase B audit.
+        self.limit_b = limit_b if limit_b is not None else limit
         self.spread_history: list[float] = []
         self.entry_tick: int | None = None
 
@@ -528,11 +533,11 @@ class R5PairTradeStrategy(StatefulStrategy[dict[str, Any]]):
         if is_flat:
             if z > self.z_entry:
                 self._take(state, self.symbol_a, side=-1, qty=self.limit)
-                self._take(state, self.symbol_b, side=+1, qty=self.limit)
+                self._take(state, self.symbol_b, side=+1, qty=self.limit_b)
                 self.entry_tick = state.timestamp
             elif z < -self.z_entry:
                 self._take(state, self.symbol_a, side=+1, qty=self.limit)
-                self._take(state, self.symbol_b, side=-1, qty=self.limit)
+                self._take(state, self.symbol_b, side=-1, qty=self.limit_b)
                 self.entry_tick = state.timestamp
         else:
             if abs(z) < self.z_exit:
@@ -548,24 +553,29 @@ class R5PairTradeStrategy(StatefulStrategy[dict[str, Any]]):
         self.entry_tick = int(v) if v is not None else None
 
 
+# Phase A drops (2026-04-30): 9 alpha-negative products removed from wiring.
+# Drop list (alpha = conservative-backtest PnL, all 3 days combined):
+#   TIGHT  — SLEEP_POD_LAMB_WOOL (-36,725), PANEL_1X2 (-30,661),
+#            TRANSLATOR_SPACE_GRAY (-16,719), PANEL_4X4 (-16,387),
+#            TRANSLATOR_GRAPHITE_MIST (-13,946)
+#   MEDIUM — GALAXY_SOUNDS_SOLAR_FLAMES (-23,644), UV_VISOR_MAGENTA (-22,796),
+#            OXYGEN_SHAKE_MINT (-14,704), OXYGEN_SHAKE_GARLIC (-9,630)
+# Expected swing: +185k conservative / +115k default. See CLAUDE.md decision log.
 TIGHT_TIER = [
     "ROBOT_VACUUMING", "ROBOT_MOPPING", "ROBOT_DISHES", "ROBOT_LAUNDRY", "ROBOT_IRONING",
-    "TRANSLATOR_SPACE_GRAY", "TRANSLATOR_ASTRO_BLACK", "TRANSLATOR_ECLIPSE_CHARCOAL",
-    "TRANSLATOR_GRAPHITE_MIST", "TRANSLATOR_VOID_BLUE",
+    "TRANSLATOR_ASTRO_BLACK", "TRANSLATOR_ECLIPSE_CHARCOAL", "TRANSLATOR_VOID_BLUE",
     "MICROCHIP_CIRCLE", "MICROCHIP_OVAL", "MICROCHIP_SQUARE", "MICROCHIP_RECTANGLE",
     "MICROCHIP_TRIANGLE",
-    "SLEEP_POD_SUEDE", "SLEEP_POD_LAMB_WOOL", "SLEEP_POD_POLYESTER", "SLEEP_POD_NYLON",
-    "SLEEP_POD_COTTON",
-    "PANEL_1X2", "PANEL_2X2", "PANEL_1X4", "PANEL_2X4", "PANEL_4X4",
+    "SLEEP_POD_SUEDE", "SLEEP_POD_POLYESTER", "SLEEP_POD_NYLON", "SLEEP_POD_COTTON",
+    "PANEL_2X2", "PANEL_1X4", "PANEL_2X4",
 ]
 
 MEDIUM_TIER = [
-    "OXYGEN_SHAKE_MORNING_BREATH", "OXYGEN_SHAKE_EVENING_BREATH", "OXYGEN_SHAKE_MINT",
-    "OXYGEN_SHAKE_CHOCOLATE", "OXYGEN_SHAKE_GARLIC",
+    "OXYGEN_SHAKE_MORNING_BREATH", "OXYGEN_SHAKE_EVENING_BREATH", "OXYGEN_SHAKE_CHOCOLATE",
     "PEBBLES_XS", "PEBBLES_S", "PEBBLES_M", "PEBBLES_L", "PEBBLES_XL",
-    "UV_VISOR_YELLOW", "UV_VISOR_AMBER", "UV_VISOR_ORANGE", "UV_VISOR_RED", "UV_VISOR_MAGENTA",
+    "UV_VISOR_YELLOW", "UV_VISOR_AMBER", "UV_VISOR_ORANGE", "UV_VISOR_RED",
     "GALAXY_SOUNDS_DARK_MATTER", "GALAXY_SOUNDS_BLACK_HOLES", "GALAXY_SOUNDS_PLANETARY_RINGS",
-    "GALAXY_SOUNDS_SOLAR_WINDS", "GALAXY_SOUNDS_SOLAR_FLAMES",
+    "GALAXY_SOUNDS_SOLAR_WINDS",
 ]
 
 WIDE_TIER = [
@@ -605,11 +615,18 @@ class Trader:
 
         # ── PEBBLES pair trade (M ↔ XL) ──────────────────────────────────
         # Registered under "PEBBLES_M" key; emits orders for both legs.
-        # Validated in pebbles.py: combined +120k default / +70k conservative.
+        # Validated in pebbles.py: combined +120k default / +70k conservative
+        # at symmetric 10/10 sizing.
+        # Phase B audit (2026-04-30): leg decomposition classified as
+        # Hypothesis B (structural — XL drives all alpha; M is anchor).
+        # Median sigma-adjusted ratio: 3.47 default / 5.33 conservative.
+        # Resized M to 5 (frees 5 position units for C.1/C.2 pair-trade nominations).
+        # Expected cost: ~-8.3k default; conservative slightly improves +1.6k.
         self.strategies["PEBBLES_M"] = R5PairTradeStrategy(
             symbol_a="PEBBLES_M",
             symbol_b="PEBBLES_XL",
-            limit=LIMIT,
+            limit=5,
+            limit_b=LIMIT,
             window=200,
             z_entry=2.0,
             z_exit=0.5,
@@ -628,7 +645,7 @@ class Trader:
         self.strategies["SNACKPACK_PISTACHIO"] = R5BaseMMStrategy("SNACKPACK_PISTACHIO", LIMIT, width=3)
         
         # Group Robots — per-product widths per CLAUDE.md ROBOT deep-dive
-        self.strategies["ROBOT_DISHES"] = R5BaseMMStrategy("ROBOT_DISHES", LIMIT, width=1)
+        self.strategies["ROBOT_DISHES"] = R5BaseMMStrategy("ROBOT_DISHES", LIMIT, width=1) # -4.6k on IMC submission 
         self.strategies["ROBOT_IRONING"] = R5BaseMMStrategy("ROBOT_IRONING", LIMIT, width=1)
         self.strategies["ROBOT_LAUNDRY"] = R5BaseMMStrategy("ROBOT_LAUNDRY", LIMIT, width=2)
 
