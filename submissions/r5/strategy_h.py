@@ -588,6 +588,8 @@ class Trader:
         for sym in TIGHT_TIER:
             if sym.startswith("ROBOT_"):
                 continue  # per-product widths wired in Group Robots block below
+            if sym.startswith("MICROCHIP_"):
+                continue  # per-product widths wired in Group Microchip block below
             self.strategies[sym] = R5BaseMMStrategy(sym, LIMIT, width=1)
 
         # ── Medium tier (width=2) ────────────────────────────────────────
@@ -596,15 +598,8 @@ class Trader:
                 self.strategies[sym] = R5AutocorrMMStrategy(sym, LIMIT, width=2, alpha=0.118)
             elif sym == "OXYGEN_SHAKE_CHOCOLATE":
                 self.strategies[sym] = R5AutocorrMMStrategy(sym, LIMIT, width=2, alpha=0.082)
-            elif sym == "PEBBLES_S":
-                self.strategies[sym] = R5BaseMMStrategy(sym, LIMIT, width=2)
-            elif sym in ("PEBBLES_M", "PEBBLES_XL"):
-                # Handled by R5PairTradeStrategy registered after this loop.
-                continue
-            elif sym in ("PEBBLES_L", "PEBBLES_XS"):
-                # Dropped: no positive PnL evidence in pebbles.py for any tested variant.
-                # Second-sweep candidates documented in submissions/r5/eda_gaps.md.
-                continue
+            elif sym.startswith("PEBBLES_"):
+                continue # PEBBLES pairs and skew wired in PEBBLES pair trade and skew blocks below
             else:
                 self.strategies[sym] = R5BaseMMStrategy(sym, LIMIT, width=2)
 
@@ -636,6 +631,11 @@ class Trader:
         self.strategies["ROBOT_DISHES"] = R5BaseMMStrategy("ROBOT_DISHES", LIMIT, width=1)
         self.strategies["ROBOT_IRONING"] = R5BaseMMStrategy("ROBOT_IRONING", LIMIT, width=1)
         self.strategies["ROBOT_LAUNDRY"] = R5BaseMMStrategy("ROBOT_LAUNDRY", LIMIT, width=2)
+
+        # Group Microchip — RECTANGLE width=2 per CLAUDE.md MICROCHIP deep-dive
+        # rectangle_widen variant: +2,824 default / +2,966 conservative vs width=1 baseline.
+        # Lead-lag CIRCLE→OVAL angle dropped (all three k values net-negative; see eda_gaps.md).
+        self.strategies["MICROCHIP_RECTANGLE"] = R5BaseMMStrategy("MICROCHIP_RECTANGLE", LIMIT, width=2)
 
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
         orders: dict[Symbol, list[Order]] = {}
