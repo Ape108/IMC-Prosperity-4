@@ -812,8 +812,7 @@ class Trader:
                 self.strategies[sym] = R5BaseMMStrategy(sym, LIMIT, width=2)
 
         def xl_signal_skew():
-            """ Just a worse MM
-            
+            """ 
                 PEBBLES_L                       -6228.00   14194.00  -11210.00   -3244.00
                 PEBBLES_M                        2110.00  -15338.00  -14363.00  -27591.00
                 PEBBLES_S                       17106.00    1698.00   19794.00   38598.00
