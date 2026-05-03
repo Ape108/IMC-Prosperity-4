@@ -1,112 +1,107 @@
-# IMC Prosperity 4 Trading Strategy
+# IMC Prosperity 4
 
-This repository contains a trading strategy implementation for the IMC Prosperity 4 challenge, a simulated trading competition where participants develop algorithms to trade various financial instruments in a realistic market environment.
+Algorithmic trading competition by [IMC](https://prosperity.imc.com/) — 5 rounds, ~6,000 teams globally. Each round adds new products; you implement a `Trader` class that the platform calls once per tick to return orders.
 
-## Overview
+**Final placement:** [TBD] / ~6,000
 
-IMC Prosperity is an annual algorithmic trading competition organized by IMC Trading. Participants are provided with historical market data and must implement trading strategies that maximize profit while managing risk. The challenge simulates real-world trading conditions with multiple products, order books, and market dynamics.
+**Contributors:** [Cameron Akhtar](https://github.com/Ape108) · [Heagen Bell](https://github.com/heagenb03)
 
-## Project Structure
+A round-by-round writeup series covering our decision process is in progress on Substack ([pending publication](https://substack.com/@heagenbell)). Currently [0 of 6 posts] drafted.
+
+---
+
+## Directory Structure
 
 ```
-├── README.md                 # Project documentation
-├── strategy.py              # Main trading strategy implementation
-└── data/
-    └── round_0/            # Historical market data
-        ├── prices_round_0_day_-1.csv    # Order book data
-        ├── prices_round_0_day_-2.csv    # Order book data
-        ├── trades_round_0_day_-1.csv    # Executed trades
-        └── trades_round_0_day_-2.csv    # Executed trades
+├── datamodel.py          # Official IMC platform data model — do not modify
+├── requirements.txt
+├── submissions/
+│   ├── r1/strategy.py    # Shipped submission
+│   ├── r2/strategy.py
+│   ├── r3/strategy.py
+│   ├── r4/strategy.py
+│   └── r5/strategy.py
+└── manual/
+    ├── r2/               # Manual trading notebooks
+    ├── r3/
+    ├── r4/
+    └── r5/
 ```
 
-## Data Format
+---
 
-### Prices Data (`prices_round_0_day_X.csv`)
-Contains order book snapshots with the following columns:
-- `day`: Trading day number
-- `timestamp`: Time in milliseconds since market open
-- `product`: Financial instrument (e.g., TOMATOES, EMERALDS)
-- `bid_price_1/2/3`: Best bid prices (highest 3 levels)
-- `bid_volume_1/2/3`: Corresponding bid volumes
-- `ask_price_1/2/3`: Best ask prices (lowest 3 levels)
-- `ask_volume_1/2/3`: Corresponding ask volumes
-- `mid_price`: Midpoint between best bid and ask
-- `profit_and_loss`: Cumulative P&L for the strategy
+## Architecture
 
-### Trades Data (`trades_round_0_day_X.csv`)
-Contains executed trades with the following columns:
-- `timestamp`: Time of trade execution
-- `buyer`: Buying party
-- `seller`: Selling party
-- `symbol`: Trading symbol
-- `currency`: Currency used
-- `price`: Execution price
-- `quantity`: Trade volume
+### Credit
 
-## Strategy Implementation
+| Author | Resource | Role in this repo |
+|--------|----------|-------------------|
+| [jmerle](https://github.com/jmerle/imc-prosperity-3) | 25th place Prosp3 strategies | Class hierarchy (`Strategy`, `StatefulStrategy`, `MarketMakingStrategy`) & code reference |
+| [timodiehm](https://github.com/TimoDiehm/imc-prosperity-3) | 2nd place Prosp3 strategies | Advanced theory/technique reference |
+| [GeyzsoN](https://github.com/GeyzsoN/prosperity_rust_backtester) | Rust backtester | Faster & configurable tests mentioned below |
+| [Equirag](https://prosperity.equirag.com/) | Online visualizer | Upload `submission.log` artifacts for order-level backtest/submission detail |
 
-The main trading logic is implemented in `strategy.py`. The strategy should:
+### Class Hierarchy
 
-1. Analyze market data (order book and trade history)
-2. Generate trading signals based on market conditions
-3. Submit limit orders to buy/sell positions
-4. Manage inventory and risk
+Base classes are copied (not imported) from `reference/jmerle_hybrid.py` into each submission.
 
-### Key Components
+```
+Strategy[T]                   # Base: symbol, limit, buy(), sell(), convert()
+├── StatefulStrategy[T]       # Adds save()/load() for persisting state across ticks
+│   └── SignalStrategy        # LONG/SHORT/NEUTRAL signal with position flattening
+└── MarketMakingStrategy      # Quotes around a fair value; fills existing orders first
+```
 
-- **Market Analysis**: Process order book data to identify trends and opportunities
-- **Signal Generation**: Implement logic to determine when to buy/sell
-- **Order Management**: Submit appropriate orders to the market
-- **Risk Management**: Monitor position sizes and P&L
+To add a strategy: subclass `MarketMakingStrategy` and implement `get_true_value()`, or subclass `SignalStrategy` and implement `get_signal()`.
 
-## Requirements
+**Key constraints:**
+- `Order(symbol, price, quantity)` — positive qty = buy, negative = sell
+- `state.traderData` is a JSON string, not a dict — parse explicitly
+- Use `logger.print()` not `print()` — bare `print()` corrupts visualizer output
+- `order_depth.sell_orders` values are negative integers — use `abs()` in microprice/VWAP
 
-- Python 3.8+
-- pandas (for data manipulation)
-- numpy (for numerical computations)
+---
 
-## Installation
+## Workflow
 
-1. Clone the repository:
+### Windows Setup
+
 ```bash
-git clone https://github.com/Ape108/IMC-Prosperity-4.git
-cd IMC-Prosperity-4
+.venv/Scripts/activate
+pip install -r requirements.txt
 ```
 
-2. Install dependencies:
+### Backtesting
+
+Backtester runs in WSL2. `$PROSP4` in WSL2 `~/.bashrc` points to this directory.
+
 ```bash
-pip install pandas numpy
+cd ~/prosperity_rust_backtester
+
+# 1. Quick default run
+rust_backtester --trader "$PROSP4/submissions/rN/strategy.py" --dataset roundN
+
+# 2. Conservative PnL check
+rust_backtester --trader "$PROSP4/submissions/rN/strategy.py" --dataset roundN \
+  --queue-penetration 0 --price-slippage-bps 5
 ```
 
-## Usage
+**Decision rule:** consistency across all days > conservative PnL > default PnL.
 
-1. Implement your trading strategy in `strategy.py`
-2. Run the strategy against historical data:
-```bash
-python strategy.py
-```
+Upload `runs/<backtest-id>/submission.log` to [prosperity.equirag.com](https://prosperity.equirag.com/) for order-level detail.
 
-## Evaluation
+> Day numbering varies by round: R1 uses `-2,-1,0`; R3 uses `0,1,2`; R4 uses `1,2,3`; R5 uses `2,3,4`.
 
-Strategies are evaluated based on:
-- **Profit & Loss**: Total returns generated
-- **Sharpe Ratio**: Risk-adjusted returns
-- **Market Impact**: How much the strategy moves prices
-- **Execution Quality**: Ability to get favorable prices
+---
 
-## Contributing
+## Results
 
-1. Fork the repository
-2. Create a feature branch
-3. Implement your strategy improvements
-4. Test thoroughly with historical data
-5. Submit a pull request
+**Final placement: [TBD] / ~6,000**
 
-## License
-
-This project is for educational and competitive purposes. Please refer to IMC Prosperity's terms and conditions for usage rights.
-
-## Acknowledgments
-
-- IMC Trading for organizing the Prosperity challenge
-- The trading community for sharing insights and strategies
+| Round | Products added | Primary strategy | Backtest PnL/day | Live PnL |
+|-------|---------------|-----------------|-----------------|---------|
+| R1 | [TBD] | [TBD] | [TBD] | [TBD] |
+| R2 | [TBD] | [TBD] | [TBD] | [TBD] |
+| R3 | Hydrogel, Velvetfruit, VEV vouchers | Microprice MM + IV scalper | ~+8k | +3,039 |
+| R4 | VEV_4000 | Avellaneda MM + inside-spread MM | ~+10k | [TBD] |
+| R5 | 50 products (10 groups) | Stat arb + base MM | [TBD] | [TBD] |
