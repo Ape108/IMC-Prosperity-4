@@ -15,6 +15,18 @@ A round-by-round writeup series covering our decision process is in progress on 
 ```
 ├── datamodel.py          # Official IMC platform data model — do not modify
 ├── requirements.txt
+├── datasets/
+│   ├── round1/           # prices_*.csv + trades_*.csv pairs
+│   ├── round2/
+│   ├── round3/
+│   ├── round4/
+│   └── round5/
+├── logs/
+│   ├── r1/               # IMC submission artifacts
+│   ├── r2/
+│   ├── r3/
+│   ├── r4/
+│   └── r5/
 ├── submissions/
 │   ├── r1/strategy.py    # Shipped submission
 │   ├── r2/strategy.py
@@ -53,14 +65,6 @@ Strategy[T]                   # Base: symbol, limit, buy(), sell(), convert()
 ```
 
 To add a strategy: subclass `MarketMakingStrategy` and implement `get_true_value()`, or subclass `SignalStrategy` and implement `get_signal()`.
-
-**Key constraints:**
-- `Order(symbol, price, quantity)` — positive qty = buy, negative = sell
-- `state.traderData` is a JSON string, not a dict — parse explicitly
-- Use `logger.print()` not `print()` — bare `print()` corrupts visualizer output
-- `order_depth.sell_orders` values are negative integers — use `abs()` in microprice/VWAP
-
----
 
 ## Workflow
 
