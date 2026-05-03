@@ -6,7 +6,7 @@ Algorithmic trading competition by [IMC](https://prosperity.imc.com/) — 5 roun
 
 **Contributors:** [Cameron Akhtar](https://github.com/Ape108) · [Heagen Bell](https://github.com/heagenb03)
 
-A round-by-round writeup series covering our decision process is in progress on Substack ([pending publication](https://substack.com/@heagenbell)). Currently [0 of 6 posts] drafted.
+A round-by-round write-up series covering our decision process is in progress on Substack - ([Profile](https://substack.com/@heagenbell)). Currently [0 of 6 posts] drafted.
 
 ---
 
