@@ -17,7 +17,7 @@ _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
-from eda_mark_bots import LAGS, R4_DAYS, lead_lag_corr, load_prices, load_trades
+from submissions.r4.tests.eda_mark_bots import LAGS, R4_DAYS, lead_lag_corr, load_prices, load_trades
 
 MARK14_BOT = "Mark 14"
 MARK14_STRIKES = ["VEV_5300", "VEV_5400", "VEV_5500"]

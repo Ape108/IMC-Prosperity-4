@@ -22,7 +22,7 @@ _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
-from eda_imitation_pnl import (
+from submissions.r4.tests.eda_imitation_pnl import (
     DATASET_DIR,
     R4_DAYS,
     TICKS_PER_DAY,

@@ -21,7 +21,7 @@ _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
-from eda_mark_bots import DATASET_DIR, R4_DAYS
+from submissions.r4.tests.eda_mark_bots import DATASET_DIR, R4_DAYS
 
 TICKS_PER_DAY = 1_000_000
 

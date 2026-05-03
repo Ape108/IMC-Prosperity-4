@@ -12,7 +12,7 @@ _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
-from eda_imitation_pnl import load_trades_with_day
+from submissions.r4.tests.eda_imitation_pnl import load_trades_with_day
 
 PRODUCT = "VELVETFRUIT_EXTRACT"
 BOT = "Mark 14"
