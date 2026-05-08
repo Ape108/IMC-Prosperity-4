@@ -566,7 +566,7 @@ class Trader:
                 leg_sign=+1, partners={"SNACKPACK_RASPBERRY": -1, "SNACKPACK_STRAWBERRY": +1},
             )
 
-        basket_cap()
+        corr()
             
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
         orders: dict[Symbol, list[Order]] = {}

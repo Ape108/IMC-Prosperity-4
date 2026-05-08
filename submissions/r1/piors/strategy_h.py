@@ -418,7 +418,8 @@ class PepperRootAdaptiveMMStrategy(StatefulStrategy[list[float]]):
       - Much better floor in bear/choppy regimes (inventory self-corrects)
 
     Results:
-      - TBD — backtest before submitting
+      - Violatile backtest performance with 14.6k - 73k pnl across 3 days
+      - Pessimistic fill assumptions (queue-penetration = 0) has significant negative impact with -452 - 65k pnl across 3 days
     """
 
     WINDOW = 20           # EW history length for fair value smoothing
@@ -733,7 +734,7 @@ class Trader:
             symbol: clazz(symbol, limits[symbol])
             for symbol, clazz in {
                 "ASH_COATED_OSMIUM": OsmiumStrategy,
-                "INTARIAN_PEPPER_ROOT": PepperRootDynamicASStrategy
+                "INTARIAN_PEPPER_ROOT": PepperRootAdaptiveMMStrategy,
             }.items()
         }
 

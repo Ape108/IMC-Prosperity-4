@@ -336,7 +336,7 @@ class BuyHoldStrategy(Strategy):
                 self.buy(passive_price, to_buy)
 
 
-### STRATEGIES ROUND 1 ###
+### STRATEGIES ROUND 2 ###
 
 
 class OsmiumStrategy(MarketMakingStrategy):

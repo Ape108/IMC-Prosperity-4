@@ -801,7 +801,7 @@ class Trader:
                 PEBBLES_XL                      -4781.00   10124.50    7121.00   12464.50
                 PEBBLES_XS                      -3018.00   -6936.50    1693.00   -8261.50
                 
-                W/ Queue penetration 0
+                W/ Conservative
                 PEBBLES_L                       -9886.00   11042.00  -14157.00  -13001.00
                 PEBBLES_M                         114.00  -18489.00  -17402.00  -35777.00
                 PEBBLES_S                       13836.00   -1284.00   18575.00   31127.00
@@ -868,7 +868,7 @@ class Trader:
             )
             # PEBBLES_L, PEBBLES_S, PEBBLES_XS, PEBBLES_XL: no orders under this variant.
 
-        pair_trade_zscore()
+        mm_baseline()
 
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
         orders: dict[Symbol, list[Order]] = {}
