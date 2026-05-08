@@ -4,12 +4,12 @@ Algorithmic trading competition by [IMC](https://prosperity.imc.com/) — 5 roun
 
 ## 🏆 Final Results (April 2026)
 
-* **Global Ranking:** #479 Overall
-* **National Ranking (United States):** #110
+* **Global Ranking:** #42 Overall
+* **National Ranking (United States):** #14
 
 ### Leaderboard Snapshots
 ![Overall and State Ranking](overall_and_state.png)
-![Leaderboard](leaderboard.jpg)
+![Leaderboard](leaderboard.png)
 
 **Contributors:** [Cameron Akhtar](https://github.com/Ape108) · [Heagen Bell](https://github.com/heagenb03)
 
