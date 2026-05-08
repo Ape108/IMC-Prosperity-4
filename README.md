@@ -2,22 +2,18 @@
 
 Algorithmic trading competition by [IMC](https://prosperity.imc.com/) — 5 rounds, ~18,000 teams globally. Each round adds new products; you implement a `Trader` class that the platform calls once per tick to return orders.
 
-## 🏆 Final Results (April 2026)
+## Final Results
 
-* **Global Ranking:** #42 Overall
+* **Global Ranking:** #42
 * **National Ranking (United States):** #14
 
-### Leaderboard Snapshots
-![Overall and State Ranking](overall_and_state.png)
-![Leaderboard](leaderboard.png)
+![Overall and State Ranking](finish.png)
 
 **Contributors:** [Cameron Akhtar](https://github.com/Ape108) · [Heagen Bell](https://github.com/heagenb03)
 
-A round-by-round write-up series covering our decision process is in progress on Substack - ([Profile](https://substack.com/@heagenbell)). Currently [0 of 6 posts] drafted.
+A round-by-round write-up series covering our decision process is in progress on this [Substack](https://substack.com/@heagenbell).
 
----
-
-## 📁 Directory Structure
+## Directory Structure
 
 ```text
 ├── datamodel.py          # Official IMC platform data model — do not modify
@@ -56,9 +52,7 @@ A round-by-round write-up series covering our decision process is in progress on
 
 ```
 
----
-
-## 🏗️ Architecture
+## Architecture
 
 ### Credit
 
@@ -83,9 +77,7 @@ Strategy[T]                   # Base: symbol, limit, buy(), sell(), convert()
 
 To add a strategy: subclass `MarketMakingStrategy` and implement `get_true_value()`, or subclass `SignalStrategy` and implement `get_signal()`.
 
----
-
-## ⚙️ Workflow
+## Workflow
 
 ### Windows Setup
 
@@ -111,9 +103,5 @@ rust_backtester --trader "$PROSP4/submissions/rN/strategy.py" --dataset roundN \
 
 ```
 
-**Decision rule:** consistency across all days > conservative PnL > default PnL.
-
 Upload `runs/<backtest-id>/submission.log` to [prosperity.equirag.com](https://prosperity.equirag.com/) for order-level detail.
-
-> *Note: Day numbering varies by round: R0/R1 use `-2,-1,0`; R3 uses `0,1,2`; R4 uses `1,2,3`; R5 uses `2,3,4`.*
 
