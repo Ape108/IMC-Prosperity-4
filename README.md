@@ -1,6 +1,6 @@
 # IMC Prosperity 4
 
-Algorithmic trading competition by [IMC](https://prosperity.imc.com/) — 5 rounds, ~18,000 teams globally. Each round adds new products; you implement a `Trader` class that the platform calls once per tick to return orders.
+Algorithmic trading competition by [IMC Trading](https://prosperity.imc.com/) — 5 rounds, ~18,000 teams globally. Each round adds new products; you implement a `Trader` class that the platform calls once per tick to return orders.
 
 ## Final Results
 
