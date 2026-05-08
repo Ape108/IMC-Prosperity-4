@@ -12,14 +12,11 @@ from datamodel import Listing, Observation, Order, OrderDepth, ProsperityEncoder
 type JSON = dict[str, Any] | list[Any] | str | int | float | bool | None
 
 
-# ── Black-Scholes math ───────────────────────────────────────────────────────
-
 def norm_cdf(x: float) -> float:
     return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
 
 
 def bs_call_price(S: float, K: float, T: float, sigma: float) -> float:
-    """Black-Scholes call price with r=0."""
     if T <= 0 or sigma <= 0:
         return max(0.0, S - K)
     sqrt_T = math.sqrt(T)
@@ -29,7 +26,6 @@ def bs_call_price(S: float, K: float, T: float, sigma: float) -> float:
 
 
 def vega(S: float, K: float, T: float, sigma: float) -> float:
-    """dC/dsigma with r=0."""
     if T <= 0 or sigma <= 0:
         return 0.0
     sqrt_T = math.sqrt(T)
@@ -39,7 +35,6 @@ def vega(S: float, K: float, T: float, sigma: float) -> float:
 
 
 def implied_vol(S: float, K: float, T: float, market_price: float, max_iter: int = 100) -> float | None:
-    """Newton-Raphson IV inversion. Returns None if price is below intrinsic or diverges."""
     intrinsic = max(0.0, S - K)
     if market_price <= intrinsic + 1e-6:
         return None
@@ -60,13 +55,10 @@ def implied_vol(S: float, K: float, T: float, market_price: float, max_iter: int
 
 
 def fit_iv_smile(moneynesses: list[float], ivs: list[float]) -> np.ndarray | None:
-    """Fit quadratic IV = a*m^2 + b*m + c. Returns [a, b, c] or None if < 3 points."""
     if len(moneynesses) < 3:
         return None
     return np.polyfit(moneynesses, ivs, 2)
 
-
-# ── Logger ───────────────────────────────────────────────────────────────────
 
 class Logger:
     def __init__(self) -> None:
@@ -135,8 +127,6 @@ class Logger:
 logger = Logger()
 
 
-# ── Strategy base classes ────────────────────────────────────────────────────
-
 class Strategy[T: JSON]:
     def __init__(self, symbol: str, limit: int) -> None:
         self.symbol = symbol
@@ -184,85 +174,6 @@ class StatefulStrategy[T: JSON](Strategy):
         raise NotImplementedError()
 
 
-class Signal(IntEnum):
-    NEUTRAL = 0
-    SHORT = 1
-    LONG = 2
-
-
-class SignalStrategy(StatefulStrategy[int]):
-    def __init__(self, symbol: Symbol, limit: int) -> None:
-        super().__init__(symbol, limit)
-        self.signal = Signal.NEUTRAL
-
-    @abstractmethod
-    def get_signal(self, state: TradingState) -> Signal | None:
-        raise NotImplementedError()
-
-    def act(self, state: TradingState) -> None:
-        new_signal = self.get_signal(state)
-        if new_signal is not None:
-            self.signal = new_signal
-
-        position = state.position.get(self.symbol, 0)
-        od = state.order_depths[self.symbol]
-
-        if self.signal == Signal.NEUTRAL:
-            if position < 0:
-                self.buy(min(od.sell_orders.keys()), -position)
-            elif position > 0:
-                self.sell(max(od.buy_orders.keys()), position)
-        elif self.signal == Signal.SHORT:
-            self.sell(max(od.buy_orders.keys()), self.limit + position)
-        elif self.signal == Signal.LONG:
-            self.buy(min(od.sell_orders.keys()), self.limit - position)
-
-    def save(self) -> int:
-        return self.signal.value
-
-    def load(self, data: int) -> None:
-        self.signal = Signal(data)
-
-
-class RollingZScoreStrategy(SignalStrategy, StatefulStrategy[dict[str, Any]]):
-    def __init__(self, symbol: Symbol, limit: int, zscore_period: int, smoothing_period: int, threshold: float) -> None:
-        super().__init__(symbol, limit)
-        self.zscore_period = zscore_period
-        self.smoothing_period = smoothing_period
-        self.threshold = threshold
-        self.history: list[float] = []
-
-    def get_signal(self, state: TradingState) -> Signal | None:
-        self.history.append(self.get_mid_price(state, self.symbol))
-
-        required = self.zscore_period + self.smoothing_period
-        if len(self.history) < required:
-            return None
-        if len(self.history) > required:
-            self.history.pop(0)
-
-        hist = pd.Series(self.history)
-        score = (
-            ((hist - hist.rolling(self.zscore_period).mean()) / hist.rolling(self.zscore_period).std())
-            .rolling(self.smoothing_period)
-            .mean()
-            .iloc[-1]
-        )
-
-        if score < -self.threshold:
-            return Signal.LONG
-        if score > self.threshold:
-            return Signal.SHORT
-        return None
-
-    def save(self) -> dict[str, Any]:
-        return {"signal": SignalStrategy.save(self), "history": self.history}
-
-    def load(self, data: dict[str, Any]) -> None:
-        SignalStrategy.load(self, data["signal"])
-        self.history = data["history"]
-
-
 class MarketMakingStrategy(Strategy):
     @abstractmethod
     def get_true_value(self, state: TradingState) -> float:
@@ -299,19 +210,13 @@ class MarketMakingStrategy(Strategy):
             price = next((p - 1 for p, _ in sell_orders if p > min_sell_price), min_sell_price)
             self.sell(price, to_sell)
 
-
-# ── Voucher constants ────────────────────────────────────────────────────────
-
 MAX_CLIP = 40
-
 STRIKES = [4000, 4500, 5000, 5100, 5200, 5300, 5400, 5500, 6000, 6500]
 VOUCHER_SYMBOLS = [f"VEV_{k}" for k in STRIKES]
 VEV_SPOT = "VELVETFRUIT_EXTRACT"
 ROUND_START_TTE_DAYS = 5.0
 TICKS_PER_DAY = 1_000_000
 
-
-# ── Voucher IV smile scalper ─────────────────────────────────────────────────
 
 class VoucherStrategy(StatefulStrategy[dict[str, Any]]):
     def __init__(self, symbol: str,
@@ -370,7 +275,6 @@ class VoucherStrategy(StatefulStrategy[dict[str, Any]]):
         if coeffs is None:
             return
 
-        # Don't trade far-OTM strikes — smile fit is unreliable at the right wing
         if self.strike / spot > self.max_otm_moneyness:
             return
 
@@ -385,10 +289,6 @@ class VoucherStrategy(StatefulStrategy[dict[str, Any]]):
         fitted_iv = float(np.polyval(coeffs, self.strike / spot))
         residual = my_iv - fitted_iv
 
-        # high IV residual → option overpriced → sell (negative target)
-        # low IV residual → option underpriced → buy (positive target)
-
-        # Update carry layer history (always, even if dead-band filters this tick)
         self.residual_history.append(residual)
         if len(self.residual_history) > self.carry_window:
             self.residual_history.pop(0)
@@ -410,8 +310,6 @@ class VoucherStrategy(StatefulStrategy[dict[str, Any]]):
             available = od.buy_orders[best_bid]
             self.sell(best_bid, min(qty_needed, available))
 
-
-# ── Delta-1 products ─────────────────────────────────────────────────────────
 
 class HydrogelStrategy(MarketMakingStrategy):
     def get_true_value(self, state: TradingState) -> float:
@@ -500,7 +398,6 @@ class Trader:
         self.strategies: dict[Symbol, Strategy] = {
             "HYDROGEL_PACK": HydrogelStrategy("HYDROGEL_PACK", limits["HYDROGEL_PACK"]),
             "VELVETFRUIT_EXTRACT": VelvetfruitStrategy("VELVETFRUIT_EXTRACT", limits["VELVETFRUIT_EXTRACT"]),
-            # Iterates over each voucher and creates a strategy for it with the appropriate strike
             **{
                 f"VEV_{strike}": VoucherStrategy(
                     f"VEV_{strike}", limits[f"VEV_{strike}"], strike,

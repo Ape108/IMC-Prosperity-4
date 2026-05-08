@@ -220,7 +220,7 @@ class MarketMakingStrategy(Strategy):
             self.sell(price, to_sell)
 
 
-class R5BaseMMStrategy(MarketMakingStrategy):
+class BaseMMStrategy(MarketMakingStrategy):
     def __init__(self, symbol: Symbol, limit: int, width: int = 1) -> None:
         super().__init__(symbol, limit)
         self.width = width
@@ -271,7 +271,7 @@ class R5BaseMMStrategy(MarketMakingStrategy):
             self.sell(passive_sell, to_sell)
 
 
-class R5AutocorrMMStrategy(R5BaseMMStrategy, StatefulStrategy[dict[str, Any]]):
+class AutocorrMMStrategy(R5BaseMMStrategy, StatefulStrategy[dict[str, Any]]):
     def __init__(self, symbol: Symbol, limit: int, width: int, alpha: float) -> None:
         super().__init__(symbol, limit, width)
         self.alpha = alpha
@@ -298,7 +298,7 @@ class R5AutocorrMMStrategy(R5BaseMMStrategy, StatefulStrategy[dict[str, Any]]):
         self.last_mid = float(v) if v is not None else None
 
 
-class R5CorrMMStrategy(R5BaseMMStrategy, StatefulStrategy[dict[str, Any]]):
+class CorrMMStrategy(R5BaseMMStrategy, StatefulStrategy[dict[str, Any]]):
     def __init__(self, symbol: Symbol, limit: int, width: int, partner_symbol: Symbol, beta: float) -> None:
         super().__init__(symbol, limit, width)
         self.partner_symbol = partner_symbol
@@ -330,7 +330,7 @@ class R5CorrMMStrategy(R5BaseMMStrategy, StatefulStrategy[dict[str, Any]]):
         self.last_partner_mid = float(v) if v is not None else None
 
 
-class R5XLSkewMMStrategy(R5BaseMMStrategy, StatefulStrategy[dict[str, Any]]):
+class XLSkewMMStrategy(R5BaseMMStrategy, StatefulStrategy[dict[str, Any]]):
     """
     Asymmetric one-sided skew based on partner (XL) recent return.
 
@@ -389,7 +389,6 @@ class R5XLSkewMMStrategy(R5BaseMMStrategy, StatefulStrategy[dict[str, Any]]):
         max_buy_price = int(true_value) - 1 if true_value % 1 == 0 else floor(true_value)
         min_sell_price = int(true_value) + 1 if true_value % 1 == 0 else ceil(true_value)
 
-        # Standard anchors (match R5BaseMMStrategy)
         passive_buy = max_buy_price - self.width + 1
         passive_sell = min_sell_price + self.width - 1
 
@@ -400,7 +399,6 @@ class R5XLSkewMMStrategy(R5BaseMMStrategy, StatefulStrategy[dict[str, Any]]):
             else:
                 passive_sell = passive_sell - self.k_ticks
 
-        # Take liquidity at or better than fair (standard MM behavior)
         for price, volume in sell_orders:
             if to_buy > 0 and price <= max_buy_price:
                 quantity = min(to_buy, -volume)
@@ -427,7 +425,7 @@ class R5XLSkewMMStrategy(R5BaseMMStrategy, StatefulStrategy[dict[str, Any]]):
         self.last_xl_mid = float(v) if v is not None else None
 
 
-class R5PairTradeStrategy(StatefulStrategy[dict[str, Any]]):
+class PairTradeStrategy(StatefulStrategy[dict[str, Any]]):
     """
     Z-score spread trade on a pair (symbol_a − symbol_b).
 
@@ -458,8 +456,6 @@ class R5PairTradeStrategy(StatefulStrategy[dict[str, Any]]):
         self.z_exit = z_exit
         self.max_hold_ticks = max_hold_ticks
         # Per-leg sizing: limit_b defaults to limit for symmetric pair trades.
-        # Asymmetric sizing (e.g. PEBBLES_M=5, PEBBLES_XL=10) is used when leg
-        # decomposition shows one leg drives all alpha — see Phase B audit.
         self.limit_b = limit_b if limit_b is not None else limit
         self.spread_history: list[float] = []
         self.entry_tick: int | None = None
@@ -520,13 +516,13 @@ class R5PairTradeStrategy(StatefulStrategy[dict[str, Any]]):
                 return
 
         if len(self.spread_history) < self.window:
-            return  # warming up
+            return
 
         mean = sum(self.spread_history) / len(self.spread_history)
         var = sum((s - mean) ** 2 for s in self.spread_history) / len(self.spread_history)
         std = var ** 0.5
         if std == 0:
-            return  # no signal — flat spread
+            return
 
         z = (spread - mean) / std
 
@@ -553,27 +549,6 @@ class R5PairTradeStrategy(StatefulStrategy[dict[str, Any]]):
         self.entry_tick = int(v) if v is not None else None
 
 
-# Phase A drops (2026-04-30): 9 alpha-negative products removed from wiring.
-# Drop list (alpha = conservative-backtest PnL, all 3 days combined):
-#   TIGHT  — SLEEP_POD_LAMB_WOOL (-36,725), PANEL_1X2 (-30,661),
-#            TRANSLATOR_SPACE_GRAY (-16,719), PANEL_4X4 (-16,387),
-#            TRANSLATOR_GRAPHITE_MIST (-13,946)
-#   MEDIUM — GALAXY_SOUNDS_SOLAR_FLAMES (-23,644), UV_VISOR_MAGENTA (-22,796),
-#            OXYGEN_SHAKE_MINT (-14,704), OXYGEN_SHAKE_GARLIC (-9,630)
-# Expected swing: +185k conservative / +115k default. See CLAUDE.md decision log.
-#
-# UV_VISOR dive (2026-04-30): EG kill criterion fired — no pair p < 0.05 across all 3 days.
-# ORANGE (-526 conservative), RED (-3,893), YELLOW (-5,625) dropped from MEDIUM_TIER.
-# AMBER (+7,878 conservative) retained at width=2. Group exhausted.
-#
-# PANEL dive (2026-04-30): EG kill criterion fired — no pair p < 0.05 across all 3 days.
-# All pair trade variants confirmed negative in backtest. PANEL_2X2 dropped:
-# conservative -4,433 (Days 3+4 systematic losses). 1X4 and 2X4 retained at width=1.
-#
-# SLEEP_POD dive (2026-04-30): EG kill criterion fired (0/6 pairs cointegrated).
-# SUEDE width=2 rescues conservative (+4,438 delta, −357 → +4,081). NYLON also improves
-# at width=2 (+1,724 delta). POLYESTER (best −1,601 conservative) and COTTON (best −2,134)
-# dropped — net-negative at every tested width. Per-product wiring in Group Sleep Pod block.
 TIGHT_TIER = [
     "ROBOT_VACUUMING", "ROBOT_MOPPING", "ROBOT_DISHES", "ROBOT_LAUNDRY", "ROBOT_IRONING",
     "TRANSLATOR_ASTRO_BLACK", "TRANSLATOR_ECLIPSE_CHARCOAL", "TRANSLATOR_VOID_BLUE",
@@ -598,11 +573,6 @@ WIDE_TIER = [
 
 LIMIT = 10
 
-# Parameter safeguards (reference):
-#   beta  — use OLS from returns regression: beta = corr(own, partner) * (std_own / std_partner).
-#            Negative for anti-correlated pairs (CHOC/VAN, RASP/STRAW), positive for co-moving pairs (PIST/STRAW).
-#   width — set from spread economics: width >= 2 * sigma_microprice_error (how far microprice drifts
-#            from realized fill mid). Wider = less adverse selection, fewer fills. Do not tune to PnL.
 class Trader:
     def __init__(self) -> None:
         self.strategies: dict[Symbol, Strategy] = {}
@@ -610,36 +580,28 @@ class Trader:
         # ── Tight tier (width=1) ─────────────────────────────────────────
         for sym in TIGHT_TIER:
             if sym.startswith("ROBOT_"):
-                continue  # per-product widths wired in Group Robots block below
+                continue
             if sym.startswith("MICROCHIP_"):
-                continue  # per-product widths wired in Group Microchip block below
+                continue
             if sym.startswith("SLEEP_POD_"):
-                continue  # per-product widths wired in Group Sleep Pod block below
-            self.strategies[sym] = R5BaseMMStrategy(sym, LIMIT, width=1)
+                continue
+            self.strategies[sym] = BaseMMStrategy(sym, LIMIT, width=1)
 
         # ── Medium tier (width=2) ────────────────────────────────────────
         for sym in MEDIUM_TIER:
             if sym == "OXYGEN_SHAKE_EVENING_BREATH":
-                self.strategies[sym] = R5AutocorrMMStrategy(sym, LIMIT, width=2, alpha=0.118)
+                self.strategies[sym] = AutocorrMMStrategy(sym, LIMIT, width=2, alpha=0.118)
             elif sym == "OXYGEN_SHAKE_CHOCOLATE":
-                self.strategies[sym] = R5AutocorrMMStrategy(sym, LIMIT, width=2, alpha=0.082)
+                self.strategies[sym] = AutocorrMMStrategy(sym, LIMIT, width=2, alpha=0.082)
             elif sym == "GALAXY_SOUNDS_PLANETARY_RINGS":
-                self.strategies[sym] = R5BaseMMStrategy(sym, LIMIT, width=3)
+                self.strategies[sym] = BaseMMStrategy(sym, LIMIT, width=3)
             elif sym.startswith("PEBBLES_"):
-                continue # PEBBLES pairs and skew wired in PEBBLES pair trade and skew blocks below
+                continue
             else:
-                self.strategies[sym] = R5BaseMMStrategy(sym, LIMIT, width=2)
+                self.strategies[sym] = BaseMMStrategy(sym, LIMIT, width=2)
 
         # ── PEBBLES pair trade (M ↔ XL) ──────────────────────────────────
-        # Registered under "PEBBLES_M" key; emits orders for both legs.
-        # Validated in pebbles.py: combined +120k default / +70k conservative
-        # at symmetric 10/10 sizing.
-        # Phase B audit (2026-04-30): leg decomposition classified as
-        # Hypothesis B (structural — XL drives all alpha; M is anchor).
-        # Median sigma-adjusted ratio: 3.47 default / 5.33 conservative.
-        # Resized M to 5 (frees 5 position units for C.1/C.2 pair-trade nominations).
-        # Expected cost: ~-8.3k default; conservative slightly improves +1.6k.
-        self.strategies["PEBBLES_M"] = R5PairTradeStrategy(
+        self.strategies["PEBBLES_M"] = PairTradeStrategy(
             symbol_a="PEBBLES_M",
             symbol_b="PEBBLES_XL",
             limit=5,
@@ -650,42 +612,38 @@ class Trader:
             max_hold_ticks=500,
         )
 
-        self.strategies["PEBBLES_S"] = R5XLSkewMMStrategy(
+        self.strategies["PEBBLES_S"] = XLSkewMMStrategy(
                         symbol="PEBBLES_S", limit=LIMIT, width=2,
                         partner_symbol="PEBBLES_XL",
                         threshold=0.001, k_ticks=2,
         )
         
-        self.strategies["PEBBLES_XS"] = R5XLSkewMMStrategy(
+        self.strategies["PEBBLES_XS"] = XLSkewMMStrategy(
                         symbol="PEBBLES_XS", limit=LIMIT, width=2,
                         partner_symbol="PEBBLES_XL",
                         threshold=0.001, k_ticks=2,
         )
         
-        # Group Snacks - per product widths from snackpack.py
-        self.strategies["SNACKPACK_CHOCOLATE"] = R5BaseMMStrategy("SNACKPACK_CHOCOLATE", LIMIT, width=3)
-        self.strategies["SNACKPACK_RASPBERRY"] = R5BaseMMStrategy("SNACKPACK_RASPBERRY", LIMIT, width=3)
-        self.strategies["SNACKPACK_PISTACHIO"] = R5BaseMMStrategy("SNACKPACK_PISTACHIO", LIMIT, width=3)
+        # Group Snacks
+        self.strategies["SNACKPACK_CHOCOLATE"] = BaseMMStrategy("SNACKPACK_CHOCOLATE", LIMIT, width=3)
+        self.strategies["SNACKPACK_RASPBERRY"] = BaseMMStrategy("SNACKPACK_RASPBERRY", LIMIT, width=3)
+        self.strategies["SNACKPACK_PISTACHIO"] = BaseMMStrategy("SNACKPACK_PISTACHIO", LIMIT, width=3)
         
-        # Group Robots — per-product widths per CLAUDE.md ROBOT deep-dive
-        self.strategies["ROBOT_DISHES"] = R5BaseMMStrategy("ROBOT_DISHES", LIMIT, width=1)
-        self.strategies["ROBOT_IRONING"] = R5BaseMMStrategy("ROBOT_IRONING", LIMIT, width=1)
-        self.strategies["ROBOT_LAUNDRY"] = R5BaseMMStrategy("ROBOT_LAUNDRY", LIMIT, width=2)
+        # Group Robots
+        self.strategies["ROBOT_DISHES"] = BaseMMStrategy("ROBOT_DISHES", LIMIT, width=1)
+        self.strategies["ROBOT_IRONING"] = BaseMMStrategy("ROBOT_IRONING", LIMIT, width=1)
+        self.strategies["ROBOT_LAUNDRY"] = BaseMMStrategy("ROBOT_LAUNDRY", LIMIT, width=2)
 
-        # Group Microchip — RECTANGLE width=2 per CLAUDE.md MICROCHIP deep-dive
-        # rectangle_widen variant: +2,824 default / +2,966 conservative vs width=1 baseline.
-        # Lead-lag CIRCLE→OVAL angle dropped (all three k values net-negative; see eda_gaps.md).
-        self.strategies["MICROCHIP_RECTANGLE"] = R5BaseMMStrategy("MICROCHIP_RECTANGLE", LIMIT, width=2)
-        self.strategies["MICROCHIP_CIRCLE"] = R5BaseMMStrategy("MICROCHIP_CIRCLE", LIMIT, width=1)
-        self.strategies["MICROCHIP_OVAL"] = R5BaseMMStrategy("MICROCHIP_OVAL", LIMIT, width=1)
-        self.strategies["MICROCHIP_TRIANGLE"] = R5BaseMMStrategy("MICROCHIP_TRIANGLE", LIMIT, width=1)
+        # Group Microchip
+        self.strategies["MICROCHIP_RECTANGLE"] = BaseMMStrategy("MICROCHIP_RECTANGLE", LIMIT, width=2)
+        self.strategies["MICROCHIP_CIRCLE"] = BaseMMStrategy("MICROCHIP_CIRCLE", LIMIT, width=1)
+        self.strategies["MICROCHIP_OVAL"] = BaseMMStrategy("MICROCHIP_OVAL", LIMIT, width=1)
+        self.strategies["MICROCHIP_TRIANGLE"] = BaseMMStrategy("MICROCHIP_TRIANGLE", LIMIT, width=1)
 
-        # Group Sleep Pod — width=2 per CLAUDE.md SLEEP_POD dive (2026-04-30)
-        # EG screen: 0/6 pairs cointegrated. Width=2 rescues SUEDE (+4,438 delta conservative)
-        # and improves NYLON (+1,724 delta). POLYESTER/COTTON dropped (net-negative at all widths).
-        self.strategies["SLEEP_POD_NYLON"] = R5BaseMMStrategy("SLEEP_POD_NYLON", LIMIT, width=2)
-        self.strategies["SLEEP_POD_SUEDE"] = R5BaseMMStrategy("SLEEP_POD_SUEDE", LIMIT, width=2)
-        self.strategies["SLEEP_POD_COTTON"] = R5BaseMMStrategy("SLEEP_POD_COTTON", LIMIT, width=2)
+        # Group Sleep Pod
+        self.strategies["SLEEP_POD_NYLON"] = BaseMMStrategy("SLEEP_POD_NYLON", LIMIT, width=2)
+        self.strategies["SLEEP_POD_SUEDE"] = BaseMMStrategy("SLEEP_POD_SUEDE", LIMIT, width=2)
+        self.strategies["SLEEP_POD_COTTON"] = BaseMMStrategy("SLEEP_POD_COTTON", LIMIT, width=2)
 
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
         orders: dict[Symbol, list[Order]] = {}

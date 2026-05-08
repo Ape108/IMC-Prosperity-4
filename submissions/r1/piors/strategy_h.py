@@ -356,6 +356,38 @@ class OsmiumStrategy(MarketMakingStrategy):
             return expected_true_value
         return mid_price
         
+        
+class BuyHoldStrategy(Strategy):
+    def get_max_price(self, state: TradingState) -> int | None:
+        # Any price
+        return None
+
+    def act(self, state: TradingState) -> None:
+        position = state.position.get(self.symbol, 0)
+        to_buy = self.limit - position
+        if to_buy <= 0:
+            return
+
+        order_depth = state.order_depths[self.symbol]
+        sell_orders = sorted(order_depth.sell_orders.items())
+        buy_orders = sorted(order_depth.buy_orders.items(), reverse=True)
+        max_price = self.get_max_price(state)
+
+        for price, volume in sell_orders:
+            if to_buy <= 0:
+                break
+            if max_price is not None and price > max_price:
+                break
+            quantity = min(to_buy, -volume)
+            self.buy(price, quantity)
+            to_buy -= quantity
+
+        if to_buy > 0:
+            best_bid = buy_orders[0][0] if buy_orders else sell_orders[0][0] - 2
+            passive_price = best_bid + 1
+            if max_price is None or passive_price <= max_price:
+                self.buy(passive_price, to_buy)
+
 
 class PepperRootStrategy(MarketMakingStrategy):
     """ 

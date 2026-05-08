@@ -200,52 +200,6 @@ class StatefulStrategy[T: JSON](Strategy):
         raise NotImplementedError()
 
 
-class Signal(IntEnum):
-    NEUTRAL = 0
-    SHORT = 1
-    LONG = 2
-
-
-class SignalStrategy(StatefulStrategy[int]):
-    def __init__(self, symbol: Symbol, limit: int) -> None:
-        super().__init__(symbol, limit)
-        self.signal = Signal.NEUTRAL
-
-    @abstractmethod
-    def get_signal(self, state: TradingState) -> Signal | None:
-        raise NotImplementedError()
-
-    def act(self, state: TradingState) -> None:
-        new_signal = self.get_signal(state)
-        if new_signal is not None:
-            self.signal = new_signal
-
-        position = state.position.get(self.symbol, 0)
-        order_depth = state.order_depths[self.symbol]
-
-        if self.signal == Signal.NEUTRAL:
-            if position < 0:
-                self.buy(self.get_buy_price(order_depth), -position)
-            elif position > 0:
-                self.sell(self.get_sell_price(order_depth), position)
-        elif self.signal == Signal.SHORT:
-            self.sell(self.get_sell_price(order_depth), self.limit + position)
-        elif self.signal == Signal.LONG:
-            self.buy(self.get_buy_price(order_depth), self.limit - position)
-
-    def get_buy_price(self, order_depth: OrderDepth) -> int:
-        return min(order_depth.sell_orders.keys())
-
-    def get_sell_price(self, order_depth: OrderDepth) -> int:
-        return max(order_depth.buy_orders.keys())
-
-    def save(self) -> int:
-        return self.signal.value
-
-    def load(self, data: int) -> None:
-        self.signal = Signal(data)
-
-
 class MarketMakingStrategy(Strategy):
     def __init__(self, symbol: Symbol, limit: int) -> None:
         super().__init__(symbol, limit)
@@ -290,63 +244,7 @@ class MarketMakingStrategy(Strategy):
             self.sell(price, to_sell)
 
 
-class BuyHoldStrategy(Strategy):
-    """
-    Base buy-hold strategy: accumulate to max long and never sell.
-
-    Each tick:
-      1. Aggressively hits all available asks (no price filter).
-      2. Posts any remaining capacity as a passive limit at best_bid+1 to
-         get filled in future ticks.
-
-    Subclass and override act() to add product-specific entry filters,
-    or override get_max_price() to cap the price you're willing to pay.
-    """
-
-    def get_max_price(self, state: TradingState) -> int | None:
-        """Return None to buy at any price, or an int to cap entry price."""
-        return None
-
-    def act(self, state: TradingState) -> None:
-        position = state.position.get(self.symbol, 0)
-        to_buy = self.limit - position
-        if to_buy <= 0:
-            return
-
-        order_depth = state.order_depths[self.symbol]
-        sell_orders = sorted(order_depth.sell_orders.items())
-        buy_orders = sorted(order_depth.buy_orders.items(), reverse=True)
-        max_price = self.get_max_price(state)
-
-        # Aggressively take asks (optionally filtered by max_price)
-        for price, volume in sell_orders:
-            if to_buy <= 0:
-                break
-            if max_price is not None and price > max_price:
-                break
-            quantity = min(to_buy, -volume)
-            self.buy(price, quantity)
-            to_buy -= quantity
-
-        # Post remainder as passive limit buy to accumulate on future ticks
-        if to_buy > 0:
-            best_bid = buy_orders[0][0] if buy_orders else sell_orders[0][0] - 2
-            passive_price = best_bid + 1
-            if max_price is None or passive_price <= max_price:
-                self.buy(passive_price, to_buy)
-
-
-### STRATEGIES ROUND 2 ###
-
-
 class OsmiumStrategy(MarketMakingStrategy):
-    """ 
-        Notes:
-        - IMC hinted at a possible hidden trader like Olivia, couldn't find anything though
-        
-        Results:
-        - 
-    """
     def get_true_value(self, state: TradingState) -> float:
         expected_true_value = 10_000
         max_delta = 5
@@ -364,9 +262,7 @@ class PepperRootStrategy(StatefulStrategy[list[float]]):
     below the SMA, it immediately flattens the position to 0 to stop losses.
     """
     
-    # 50 ticks is roughly a short-term trend in Prosperity. 
-    # Increase this if you want a looser safety net, decrease for a tighter trigger.
-    SMA_WINDOW = 50 
+    SMA_WINDOW = 50
 
     def __init__(self, symbol: Symbol, limit: int) -> None:
         super().__init__(symbol, limit)
@@ -374,12 +270,10 @@ class PepperRootStrategy(StatefulStrategy[list[float]]):
 
     def act(self, state: TradingState) -> None:
         order_depth = state.order_depths[self.symbol]
-        
-        # Sort asks (sell orders) lowest to highest, bids (buy orders) highest to lowest
+
         sell_orders = sorted(order_depth.sell_orders.items())
         buy_orders = sorted(order_depth.buy_orders.items(), reverse=True)
 
-        # 1. State Management: Update Mid Price History
         popular_mid = self.get_mid_price(state, self.symbol)
         self.mid_history.append(popular_mid)
         
@@ -388,39 +282,30 @@ class PepperRootStrategy(StatefulStrategy[list[float]]):
 
         position = state.position.get(self.symbol, 0)
 
-        # 2. Calculate Simple Moving Average
         if len(self.mid_history) < self.SMA_WINDOW:
-            # Not enough data yet, assume trend is safe
-            sma = 0.0 
+            sma = 0.0
         else:
             sma = sum(self.mid_history) / self.SMA_WINDOW
 
-        # 3. Core Logic: Trap Detection vs. Accumulation
         if sma > 0 and popular_mid < sma:
-            # REVERSAL DETECTED: The trap sprung. Panic sell everything immediately.
             if position > 0:
                 to_sell = position
                 for price, volume in buy_orders:
                     if to_sell <= 0:
                         break
-                    # Bid volumes are positive
-                    quantity = min(to_sell, volume) 
+                    quantity = min(to_sell, volume)
                     self.sell(price, quantity)
                     to_sell -= quantity
         else:
-            # UPTREND SAFE: Execute standard Buy & Hold accumulation
             to_buy = self.limit - position
-            
-            # Aggressively cross the spread to take available asks
+
             for price, volume in sell_orders:
                 if to_buy <= 0:
                     break
-                # Ask volumes are negative in the Prosperity engine
-                quantity = min(to_buy, -volume) 
+                quantity = min(to_buy, -volume)
                 self.buy(price, quantity)
                 to_buy -= quantity
             
-            # Post any remaining capacity as a passive limit bid just above the spread
             if to_buy > 0:
                 best_bid = buy_orders[0][0] if buy_orders else sell_orders[0][0] - 2
                 self.buy(best_bid + 1, to_buy)
@@ -447,13 +332,6 @@ class Trader:
         }
 
     def bid(self) -> int:
-        """MAF blind auction bid in XIRECs.
-
-        Break-even analysis (backtester shows 80% of quotes; MAF unlocks 100%):
-            - Avg daily backtest PnL: ~75,600 seashells
-            - Assume we gain from 25% more fills: ~18,900 seashells (75,600 * 0.25)
-            - Break-even bid: ~18,900 so anything below is profitable
-        """
         return 15_000
     
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:

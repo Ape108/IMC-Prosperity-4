@@ -2,6 +2,8 @@
 
 Algorithmic trading competition by [IMC](https://prosperity.imc.com/) — 5 rounds, ~18,000 teams globally. Each round adds new products; you implement a `Trader` class that the platform calls once per tick to return orders.
 
+Round-by-round writeup (in progress): [Substack](https://substack.com/@heagenbell)
+
 ## Final Results
 
 * **Global Ranking:** #42
@@ -11,7 +13,15 @@ Algorithmic trading competition by [IMC](https://prosperity.imc.com/) — 5 roun
 
 **Contributors:** [Cameron Akhtar](https://github.com/Ape108) · [Heagen Bell](https://github.com/heagenb03)
 
-A round-by-round write-up series covering our decision process is in progress on this [Substack](https://substack.com/@heagenbell).
+## Results by Round
+
+| Round | Products | Strategy | PnL | Key Learning |
+|-------|----------|----------|-----|--------------|
+| R1 | ASH_COATED_OSMIUM, INTARIAN_PEPPER_ROOT | Avellaneda-Stoikov MM with data-driven drift estimation | 160,290 | Conservative backtest (`--queue-penetration 0`) is the real truth test — queue-priority alpha collapses to zero |
+| R2 | Same as R1 | Refined drift estimation; MAF blind auction bid | 475,034 | MAF is a game-theory problem: bid median+ε, not max — overbidding destroys more PnL than the access is worth |
+| R3 | HYDROGEL_PACK, VELVETFRUIT_EXTRACT, VEV options (10 strikes) | Microprice + Avellaneda inventory skew MM; Black-Scholes IV smile scalper | 87,276 | P4 VEV IV has positive autocorrelation — IV scalping that worked in P3 fails here; neutral MM is the edge |
+| R4 | Same as R3 | Carried R3 MM; inside-spread passive MM on VEV_4000 (21-tick spread); Mark bot EDA | 207,815 | Wide-spread inside-spread MM ships on asymmetric risk: conservative worst case is 0 fills, not negative PnL |
+| R5 | 50 products across 10 groups | PEBBLES M↔XL pair trade; OXYGEN_SHAKE autocorrelation overlays; base MM everywhere else | 796,401 | Many "obvious" structural relationships (area, color spectrum) are not cointegrated empirically — always run Engle-Granger before building pair trades |
 
 ## Directory Structure
 
@@ -20,36 +30,29 @@ A round-by-round write-up series covering our decision process is in progress on
 ├── requirements.txt      # Python dependencies
 ├── datasets/             # prices_*.csv + trades_*.csv pairs for each round
 │   ├── round_0/
-│   ├── round1/           
+│   ├── round1/
 │   ├── round2/
 │   ├── round3/
 │   ├── round4/
 │   └── round5/
-├── logs/                 # Backtest and submission logs/results
-│   ├── r1/               
-│   ├── r2/
-│   ├── r3/
-│   ├── r4/
-│   └── r5/
-├── manual/               # Manual trading analysis, Jupyter notebooks, and optimization scripts
-│   ├── r2/               
-│   ├── r3/
-│   ├── r4/
-│   └── r5/
-├── reference/            # Backtester docs and external reference strategies (jmerle, timodiehm)
-└── submissions/          # Shipped code, tests, and modularized logic
-    ├── r1/
-    ├── r2/
-    ├── r3/
-    ├── r4/
-    │   ├── tests/        # EDA and imitation logic tests
+├── logs/                 # Backtest and live submission logs
+│   └── r1/ … r5/
+├── manual/               # Manual trading analysis notebooks
+│   └── r2/ … r5/
+├── reference/            # Backtester docs; jmerle and timodiehm reference strategies
+└── submissions/          # Shipped code per round
+    ├── tutorial/         
+    ├── r1/               
+    ├── r2/               
+    ├── r3/               
+    ├── r4/               
+    │   ├── piors/        # Archived development iterations
+    │   ├── tests/        # EDA scripts
     │   └── strategy.py
-    ├── r5/
-    │   ├── groups/       # Group-specific logic for the 50 R5 products
-    │   ├── phase2/       # Phase 2 analysis, matrices, and regime classifications
-    │   └── strategy.py   # Final R5 shipped submission
-    └── tutorial/
-
+    └── r5/               
+        ├── piors/        # Archived development iterations
+        ├── groups/       # Per-group analysis scripts (cointegration, lead-lag)
+        └── strategy.py
 ```
 
 ## Architecture
@@ -60,22 +63,19 @@ A round-by-round write-up series covering our decision process is in progress on
 | --- | --- | --- |
 | [jmerle](https://github.com/jmerle/imc-prosperity-3) | 25th place Prosp3 strategies | Class hierarchy (`Strategy`, `StatefulStrategy`, `MarketMakingStrategy`) & code reference |
 | [timodiehm](https://github.com/TimoDiehm/imc-prosperity-3) | 2nd place Prosp3 strategies | Advanced theory/technique reference |
-| [GeyzsoN](https://github.com/GeyzsoN/prosperity_rust_backtester) | Rust backtester | Faster & configurable tests mentioned below |
-| [Equirag](https://prosperity.equirag.com/) | Online visualizer | Upload `submission.log` artifacts for order-level backtest/submission detail |
+| [GeyzsoN](https://github.com/GeyzsoN/prosperity_rust_backtester) | Rust backtester | Faster & configurable backtesting |
+| [Equirag](https://prosperity.equirag.com/) | Online visualizer | Upload `submission.log` artifacts for order-level detail |
 
 ### Class Hierarchy
 
-Base classes are copied (not imported) from `reference/jmerle_hybrid.py` into each submission.
+Base classes are copied from `reference/jmerle_hybrid.py` into each submission.
 
 ```python
-Strategy[T]                   # Base: symbol, limit, buy(), sell(), convert()
-├── StatefulStrategy[T]       # Adds save()/load() for persisting state across ticks
-│   └── SignalStrategy        # LONG/SHORT/NEUTRAL signal with position flattening
-└── MarketMakingStrategy      # Quotes around a fair value; fills existing orders first
-
+Strategy[T]
+├── StatefulStrategy[T]
+│   └── SignalStrategy
+└── MarketMakingStrategy
 ```
-
-To add a strategy: subclass `MarketMakingStrategy` and implement `get_true_value()`, or subclass `SignalStrategy` and implement `get_signal()`.
 
 ## Workflow
 
@@ -84,7 +84,6 @@ To add a strategy: subclass `MarketMakingStrategy` and implement `get_true_value
 ```bash
 .venv/Scripts/activate
 pip install -r requirements.txt
-
 ```
 
 ### Backtesting
@@ -100,8 +99,6 @@ rust_backtester --trader "$PROSP4/submissions/rN/strategy.py" --dataset roundN
 # 2. Conservative PnL check
 rust_backtester --trader "$PROSP4/submissions/rN/strategy.py" --dataset roundN \
   --queue-penetration 0 --price-slippage-bps 5
-
 ```
 
 Upload `runs/<backtest-id>/submission.log` to [prosperity.equirag.com](https://prosperity.equirag.com/) for order-level detail.
-

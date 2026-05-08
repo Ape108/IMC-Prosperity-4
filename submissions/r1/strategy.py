@@ -200,52 +200,6 @@ class StatefulStrategy[T: JSON](Strategy):
         raise NotImplementedError()
 
 
-class Signal(IntEnum):
-    NEUTRAL = 0
-    SHORT = 1
-    LONG = 2
-
-
-class SignalStrategy(StatefulStrategy[int]):
-    def __init__(self, symbol: Symbol, limit: int) -> None:
-        super().__init__(symbol, limit)
-        self.signal = Signal.NEUTRAL
-
-    @abstractmethod
-    def get_signal(self, state: TradingState) -> Signal | None:
-        raise NotImplementedError()
-
-    def act(self, state: TradingState) -> None:
-        new_signal = self.get_signal(state)
-        if new_signal is not None:
-            self.signal = new_signal
-
-        position = state.position.get(self.symbol, 0)
-        order_depth = state.order_depths[self.symbol]
-
-        if self.signal == Signal.NEUTRAL:
-            if position < 0:
-                self.buy(self.get_buy_price(order_depth), -position)
-            elif position > 0:
-                self.sell(self.get_sell_price(order_depth), position)
-        elif self.signal == Signal.SHORT:
-            self.sell(self.get_sell_price(order_depth), self.limit + position)
-        elif self.signal == Signal.LONG:
-            self.buy(self.get_buy_price(order_depth), self.limit - position)
-
-    def get_buy_price(self, order_depth: OrderDepth) -> int:
-        return min(order_depth.sell_orders.keys())
-
-    def get_sell_price(self, order_depth: OrderDepth) -> int:
-        return max(order_depth.buy_orders.keys())
-
-    def save(self) -> int:
-        return self.signal.value
-
-    def load(self, data: int) -> None:
-        self.signal = Signal(data)
-
-
 class MarketMakingStrategy(Strategy):
     def __init__(self, symbol: Symbol, limit: int) -> None:
         super().__init__(symbol, limit)
@@ -290,66 +244,9 @@ class MarketMakingStrategy(Strategy):
             self.sell(price, to_sell)
 
 
-class BuyHoldStrategy(Strategy):
-    """
-    Base buy-hold strategy: accumulate to max long and never sell.
-
-    Each tick:
-      1. Aggressively hits all available asks (no price filter).
-      2. Posts any remaining capacity as a passive limit at best_bid+1 to
-         get filled in future ticks.
-
-    Subclass and override act() to add product-specific entry filters,
-    or override get_max_price() to cap the price you're willing to pay.
-    """
-
-    def get_max_price(self, state: TradingState) -> int | None:
-        """Return None to buy at any price, or an int to cap entry price."""
-        return None
-
-    def act(self, state: TradingState) -> None:
-        position = state.position.get(self.symbol, 0)
-        to_buy = self.limit - position
-        if to_buy <= 0:
-            return
-
-        order_depth = state.order_depths[self.symbol]
-        sell_orders = sorted(order_depth.sell_orders.items())
-        buy_orders = sorted(order_depth.buy_orders.items(), reverse=True)
-        max_price = self.get_max_price(state)
-
-        # Aggressively take asks (optionally filtered by max_price)
-        for price, volume in sell_orders:
-            if to_buy <= 0:
-                break
-            if max_price is not None and price > max_price:
-                break
-            quantity = min(to_buy, -volume)
-            self.buy(price, quantity)
-            to_buy -= quantity
-
-        # Post remainder as passive limit buy to accumulate on future ticks
-        if to_buy > 0:
-            best_bid = buy_orders[0][0] if buy_orders else sell_orders[0][0] - 2
-            passive_price = best_bid + 1
-            if max_price is None or passive_price <= max_price:
-                self.buy(passive_price, to_buy)
-
-
-### STRATEGIES ROUND 1 ###
-
-
 class OsmiumStrategy(MarketMakingStrategy):
-    """ 
-        Notes:
-        - IMC hinted at a possible hidden trader like Olivia, couldn't find anything though
-        
-        Results:
-        - Stable backtest performance with 16k-17k pnl across 3 days
-        - Maintains backtest performance with pesimistic fill assumptions (queue-penetration = 0) with 3.2k-3.6k pnl across 3 days
-        - IMC performance of 2,837.563 pnl - seems to be peak performance and upper percentile
-    """
     def get_true_value(self, state: TradingState) -> float:
+        # Hard coded based on EDA
         expected_true_value = 10_000
         max_delta = 5
         mid_price = self.get_mid_price(state, self.symbol)
@@ -360,8 +257,7 @@ class OsmiumStrategy(MarketMakingStrategy):
 
 class PepperRootStrategy(StatefulStrategy[list[float]]):
     """
-    Avellaneda-Stoikov MM for INTARIAN_PEPPER_ROOT with data-driven drift.
-
+    Avellaneda-Stoikov MM 
     Replaces the hardcoded bullish_drift = 2.0 with a slope estimated via
     linear regression over recent mid-price observations. The directional lean
     is now derived from what the data actually shows, not assumed in advance:
@@ -375,11 +271,6 @@ class PepperRootStrategy(StatefulStrategy[list[float]]):
 
     0-EV clearing is implemented as direct aggressive orders (not quote=0,
     which is a no-op for non-integer true_value in the base class).
-
-    Results:
-        - Stable backtest performance with 54k - 55k pnl across 3 days
-        - Beats backtest performance with pesimistic fill assumptions (queue-penetration = 0) with 54k - 56k pnl across 3 days
-        - IMC performance of 4,528.813 pnl - much better than prev MM
     """
 
     GAMMA = 0.005       # Risk aversion (A-S)

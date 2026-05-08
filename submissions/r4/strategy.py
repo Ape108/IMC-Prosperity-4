@@ -181,85 +181,6 @@ class StatefulStrategy[T: JSON](Strategy):
         raise NotImplementedError()
 
 
-class Signal(IntEnum):
-    NEUTRAL = 0
-    SHORT = 1
-    LONG = 2
-
-
-class SignalStrategy(StatefulStrategy[int]):
-    def __init__(self, symbol: Symbol, limit: int) -> None:
-        super().__init__(symbol, limit)
-        self.signal = Signal.NEUTRAL
-
-    @abstractmethod
-    def get_signal(self, state: TradingState) -> Signal | None:
-        raise NotImplementedError()
-
-    def act(self, state: TradingState) -> None:
-        new_signal = self.get_signal(state)
-        if new_signal is not None:
-            self.signal = new_signal
-
-        position = state.position.get(self.symbol, 0)
-        od = state.order_depths[self.symbol]
-
-        if self.signal == Signal.NEUTRAL:
-            if position < 0:
-                self.buy(min(od.sell_orders.keys()), -position)
-            elif position > 0:
-                self.sell(max(od.buy_orders.keys()), position)
-        elif self.signal == Signal.SHORT:
-            self.sell(max(od.buy_orders.keys()), self.limit + position)
-        elif self.signal == Signal.LONG:
-            self.buy(min(od.sell_orders.keys()), self.limit - position)
-
-    def save(self) -> int:
-        return self.signal.value
-
-    def load(self, data: int) -> None:
-        self.signal = Signal(data)
-
-
-class RollingZScoreStrategy(SignalStrategy, StatefulStrategy[dict[str, Any]]):
-    def __init__(self, symbol: Symbol, limit: int, zscore_period: int, smoothing_period: int, threshold: float) -> None:
-        super().__init__(symbol, limit)
-        self.zscore_period = zscore_period
-        self.smoothing_period = smoothing_period
-        self.threshold = threshold
-        self.history: list[float] = []
-
-    def get_signal(self, state: TradingState) -> Signal | None:
-        self.history.append(self.get_mid_price(state, self.symbol))
-
-        required = self.zscore_period + self.smoothing_period
-        if len(self.history) < required:
-            return None
-        if len(self.history) > required:
-            self.history.pop(0)
-
-        hist = pd.Series(self.history)
-        score = (
-            ((hist - hist.rolling(self.zscore_period).mean()) / hist.rolling(self.zscore_period).std())
-            .rolling(self.smoothing_period)
-            .mean()
-            .iloc[-1]
-        )
-
-        if score < -self.threshold:
-            return Signal.LONG
-        if score > self.threshold:
-            return Signal.SHORT
-        return None
-
-    def save(self) -> dict[str, Any]:
-        return {"signal": SignalStrategy.save(self), "history": self.history}
-
-    def load(self, data: dict[str, Any]) -> None:
-        SignalStrategy.load(self, data["signal"])
-        self.history = data["history"]
-
-
 class MarketMakingStrategy(Strategy):
     @abstractmethod
     def get_true_value(self, state: TradingState) -> float:
@@ -365,8 +286,7 @@ class VoucherStrategy(StatefulStrategy[dict[str, Any]]):
         coeffs = fit_iv_smile(moneynesses, ivs)
         if coeffs is None:
             return
-
-        # Don't trade far-OTM strikes — smile fit is unreliable at the right wing
+        
         if self.strike / spot > self.max_otm_moneyness:
             return
 
@@ -381,10 +301,6 @@ class VoucherStrategy(StatefulStrategy[dict[str, Any]]):
         fitted_iv = float(np.polyval(coeffs, self.strike / spot))
         residual = my_iv - fitted_iv
 
-        # high IV residual → option overpriced → sell (negative target)
-        # low IV residual → option underpriced → buy (positive target)
-
-        # Update carry layer history (always, even if dead-band filters this tick)
         self.residual_history.append(residual)
         if len(self.residual_history) > self.carry_window:
             self.residual_history.pop(0)
@@ -411,7 +327,7 @@ class VoucherStrategy(StatefulStrategy[dict[str, Any]]):
             self.sell(best_bid, min(qty_needed, available))
 
 
-class Vev4000MMStrategy(Strategy):
+class VoucherMMStrategy(Strategy):
     def __init__(
         self,
         symbol: str,
@@ -445,8 +361,6 @@ class Vev4000MMStrategy(Strategy):
         best_bid = max(od.buy_orders.keys())
         best_ask = min(od.sell_orders.keys())
         spread = best_ask - best_bid
-        # Need `spread - 2*offset >= 1` for inside-spread quotes to leave at
-        # least one tick of gap between them.
         if spread - 2 * self.offset >= 1:
             return best_bid + self.offset, best_ask - self.offset
         return best_bid, best_ask
@@ -555,27 +469,22 @@ class Mark14HydrogelBiasStrategy(HydrogelStrategy, StatefulStrategy[dict[str, An
     def _compute_signal_bias(self, state: TradingState) -> float:
         ts = state.timestamp
 
-        # 1. Day-boundary guard.
         if self.history and ts < self.history[-1][0]:
             self.history = []
 
-        # 2. Ingest Mark 14 trades.
         for trade in state.market_trades.get(self.symbol, []):
             if trade.buyer == "Mark 14":
                 self.history.append((trade.timestamp, +trade.quantity))
             elif trade.seller == "Mark 14":
                 self.history.append((trade.timestamp, -trade.quantity))
 
-        # 3. Trim old entries.
         cutoff = ts - self.window_ticks
         self.history = [
             (entry[0], entry[1]) for entry in self.history if entry[0] >= cutoff
         ]
 
-        # 4. Compute net.
         net = sum(entry[1] for entry in self.history)
 
-        # 5. Proportional bias with cap.
         ratio = max(-1.0, min(1.0, net / self.scale))
         return self.bias_k * ratio
 
@@ -675,8 +584,7 @@ class Trader:
         for strike in STRIKES:
             sym = f"VEV_{strike}"
             if sym == "VEV_4000" or sym == "VEV_5200" or sym == "VEV_5300" or sym == "VEV_5400":
-                # Inside-spread MM with hard position bands. Wide-spread, deep-ITM
-                self.strategies[sym] = Vev4000MMStrategy(sym, limits[sym])
+                self.strategies[sym] = VoucherMMStrategy(sym, limits[sym])
                 continue
             else:
                 self.strategies[sym] = VoucherStrategy(
