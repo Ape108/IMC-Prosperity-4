@@ -15,13 +15,12 @@ Round-by-round writeup (in progress): [Substack](https://substack.com/@heagenbel
 
 ## Results by Round
 
-| Round | Products | Strategy | PnL | Key Learning |
-|-------|----------|----------|-----|--------------|
-| R1 | ASH_COATED_OSMIUM, INTARIAN_PEPPER_ROOT | Avellaneda-Stoikov MM with data-driven drift estimation | 160,290 | Conservative backtest (`--queue-penetration 0`) is the real truth test — queue-priority alpha collapses to zero |
-| R2 | Same as R1 | Refined drift estimation; MAF blind auction bid | 475,034 | MAF is a game-theory problem: bid median+ε, not max — overbidding destroys more PnL than the access is worth |
-| R3 | HYDROGEL_PACK, VELVETFRUIT_EXTRACT, VEV options (10 strikes) | Microprice + Avellaneda inventory skew MM; Black-Scholes IV smile scalper | 87,276 | P4 VEV IV has positive autocorrelation — IV scalping that worked in P3 fails here; neutral MM is the edge |
-| R4 | Same as R3 | Carried R3 MM; inside-spread passive MM on VEV_4000 (21-tick spread); Mark bot EDA | 207,815 | Wide-spread inside-spread MM ships on asymmetric risk: conservative worst case is 0 fills, not negative PnL |
-| R5 | 50 products across 10 groups | PEBBLES M↔XL pair trade; OXYGEN_SHAKE autocorrelation overlays; base MM everywhere else | 796,401 | Many "obvious" structural relationships (area, color spectrum) are not cointegrated empirically — always run Engle-Granger before building pair trades |
+| Round | Products | Strategy | PnL | 
+| R1 | ASH_COATED_OSMIUM, INTARIAN_PEPPER_ROOT | Avellaneda-Stoikov MM with data-driven drift estimation | 160,290 |
+| R2 | Same as R1 | Refined drift estimation; MAF blind auction bid | 475,034 |
+| R3 | HYDROGEL_PACK, VELVETFRUIT_EXTRACT, VEV options (10 strikes) | Microprice + Avellaneda inventory skew MM; Black-Scholes IV smile scalper | 87,276 |
+| R4 | Same as R3 | Carried R3 MM; inside-spread passive MM on VEV_4000 (21-tick spread); Mark bot EDA | 207,815 | 
+| R5 | 50 products across 10 groups | PEBBLES M↔XL pair trade; OXYGEN_SHAKE autocorrelation overlays; base MM everywhere else | 796,401 |
 
 ## Directory Structure
 
