@@ -16,6 +16,7 @@ Round-by-round writeup (in progress): [Substack](https://substack.com/@heagenbel
 ## Results by Round
 
 | Round | Products | Strategy | PnL | 
+|-------------------------------------|
 | R1 | ASH_COATED_OSMIUM, INTARIAN_PEPPER_ROOT | Avellaneda-Stoikov MM with data-driven drift estimation | 160,290 |
 | R2 | Same as R1 | Refined drift estimation; MAF blind auction bid | 475,034 |
 | R3 | HYDROGEL_PACK, VELVETFRUIT_EXTRACT, VEV options (10 strikes) | Microprice + Avellaneda inventory skew MM; Black-Scholes IV smile scalper | 87,276 |
